@@ -22,7 +22,17 @@ export class PopupManager {
   }
 
   open(path: string): Window {
-    const url = `${this.walletOrigin}${path}`
+    // The wallet popup refuses to handshake without a pinned dApp origin — it
+    // uses this value to target postMessage replies so a malicious site can't
+    // scrape signed results by timing window.opener. Failing loud here beats
+    // a confusing "Missing ?origin parameter" in the popup later.
+    const dAppOrigin =
+      typeof window !== 'undefined' ? window.location.origin : ''
+    if (!dAppOrigin) {
+      throw new Error('SoulPass SDK requires a browser window.')
+    }
+    const sep = path.includes('?') ? '&' : '?'
+    const url = `${this.walletOrigin}${path}${sep}origin=${encodeURIComponent(dAppOrigin)}`
     const features = this.getPopupFeatures()
     const popup = window.open(url, 'soulpass-wallet', features)
     if (!popup) {

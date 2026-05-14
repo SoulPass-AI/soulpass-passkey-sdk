@@ -2,10 +2,16 @@ import {
   BaseMessageSignerWalletAdapter,
   WalletName,
   WalletReadyState,
+  WalletSignTransactionError,
 } from '@solana/wallet-adapter-base'
+import type {
+  Connection,
+  SendOptions,
+  TransactionSignature,
+} from '@solana/web3.js'
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js'
 import { SoulPassWallet } from '../wallet'
-import type { SoulPassWalletConfig } from '../types'
+import type { SoulPassWalletConfig, SoulPassSession } from '../types'
 
 export const SoulPassWalletName = 'SoulPass' as WalletName<'SoulPass'>
 
@@ -33,6 +39,26 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
       this._publicKey = null
       this.emit('disconnect')
     })
+
+    // Forward matrix-user session so dApps can subscribe via the adapter
+    // rather than reaching into the inner wallet. Cast is needed because
+    // `BaseMessageSignerWalletAdapter.emit` types are closed to the base
+    // event set.
+    this.wallet.on('session', (session: SoulPassSession) => {
+      ;(this as unknown as {
+        emit: (event: 'soulpass-session', session: SoulPassSession) => void
+      }).emit('soulpass-session', session)
+    })
+  }
+
+  /**
+   * Matrix-user JWT obtained during the passkey signin popup. Null when
+   * disconnected, or when the popup build predates session forwarding.
+   * Read after `connect()` resolves, or subscribe to the
+   * `'soulpass-session'` event to be notified on each connection.
+   */
+  get session(): SoulPassSession | null {
+    return this.wallet.session
   }
 
   get publicKey(): PublicKey | null {
@@ -54,9 +80,7 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
   async connect(): Promise<void> {
     this._connecting = true
     try {
-      const result = await this.wallet.connect()
-      this._publicKey = new PublicKey(result.publicKey)
-      this.emit('connect', this._publicKey)
+      await this.wallet.connect()
     } finally {
       this._connecting = false
     }
@@ -64,31 +88,36 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
 
   async disconnect(): Promise<void> {
     this.wallet.disconnect()
-    this._publicKey = null
-    this.emit('disconnect')
   }
 
-  async signTransaction<T extends Transaction | VersionedTransaction>(transaction: T): Promise<T> {
-    const serialized = transaction.serialize({ requireAllSignatures: false } as any)
-    const result = await this.wallet.signTransaction(
-      serialized instanceof Buffer ? new Uint8Array(serialized) : serialized
+  /**
+   * SoulPass signs + submits in a single WebAuthn-bound step. There is no
+   * "pre-signed tx" to hand back to the dApp — attempting to return one would
+   * lose the on-chain ExecuteWebAuthn wrapper. dApps should use sendTransaction.
+   */
+  async signTransaction<T extends Transaction | VersionedTransaction>(_transaction: T): Promise<T> {
+    throw new WalletSignTransactionError(
+      'SoulPass does not expose signTransaction — use sendTransaction (one-step sign+submit).',
     )
-    const signedBytes = base64ToUint8Array(result.signedTransaction)
-
-    if (transaction instanceof VersionedTransaction) {
-      return VersionedTransaction.deserialize(signedBytes) as T
-    }
-    return Transaction.from(signedBytes) as T
   }
 
+  async sendTransaction<T extends Transaction | VersionedTransaction>(
+    transaction: T,
+    _connection: Connection,
+    _options?: SendOptions,
+  ): Promise<TransactionSignature> {
+    const serialized = transaction.serialize({ requireAllSignatures: false } as any) as Uint8Array
+    return this.wallet.signAndSendTransaction(serialized)
+  }
+
+  /**
+   * Returns only the raw WebAuthn assertion signature. A dApp cannot verify
+   * this byte sequence against a Solana Ed25519 public key — passkey-aware
+   * dApps should call `SoulPassWallet.signMessage` directly to also receive
+   * `authenticatorData` + `clientDataJSON`.
+   */
   async signMessage(message: Uint8Array): Promise<Uint8Array> {
-    return this.wallet.signMessage(message)
+    const result = await this.wallet.signMessage(message)
+    return result.signature
   }
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return bytes
 }

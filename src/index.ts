@@ -1,2 +1,6 @@
 export { SoulPassWallet } from './wallet'
-export type { SoulPassWalletConfig, WalletState } from './types'
+export type { SoulPassWalletConfig, WalletState, SoulPassSession } from './types'
+export {
+  SoulPassWalletAdapter,
+  SoulPassWalletName,
+} from './adapters/solana'

@@ -1,8 +1,10 @@
 // --- SDK Configuration ---
 
+export type SoulPassNetwork = 'mainnet-beta' | 'devnet'
+
 export interface SoulPassWalletConfig {
   /** Solana network */
-  network?: 'mainnet-beta' | 'devnet'
+  network?: SoulPassNetwork
   /** Custom Solana RPC endpoint */
   endpoint?: string
   /** Override signing page base URL (default: https://soulpass.ai) */
@@ -17,6 +19,26 @@ export interface WalletState {
   walletAddress: string | null   // MachineWallet base58
 }
 
+// --- Session ---
+
+/**
+ * Matrix-user JWT the popup obtained during `/auth/passkey/signin/verify`.
+ * Forwarded to dApps so they can address matrix-user APIs on behalf of the
+ * signed-in user (NFT discovery via DAS, portfolio reads, etc) without a
+ * second round of authentication.
+ *
+ * Refresh token is intentionally NOT included: it's long-lived and exposing
+ * it cross-origin would let any XSS on the dApp extend the session
+ * indefinitely. When the access token expires the dApp should re-invoke
+ * `connect()` — one additional passkey tap, bounded blast radius.
+ */
+export interface SoulPassSession {
+  /** Matrix-user bearer JWT. Sent raw in `Authorization` header (no prefix). */
+  accessToken: string
+  /** Seconds until expiry — dApp is expected to refresh by re-connecting. */
+  expiresIn?: number
+}
+
 // --- postMessage Protocol: SDK → Popup ---
 
 export type SDKMessageType = 'CONNECT' | 'SIGN_TRANSACTION' | 'SIGN_MESSAGE'
@@ -24,19 +46,31 @@ export type SDKMessageType = 'CONNECT' | 'SIGN_TRANSACTION' | 'SIGN_MESSAGE'
 export interface SDKConnectMessage {
   type: 'CONNECT'
   id: string
-  payload: { network: string }
+  payload: { network: SoulPassNetwork }
 }
 
 export interface SDKSignTransactionMessage {
   type: 'SIGN_TRANSACTION'
   id: string
-  payload: { transaction: string } // base64
+  payload: {
+    /** base64-serialized Transaction (legacy or v0 without ALT) */
+    transaction: string
+    /** MachineWallet PDA base58 — needed by the wallet popup to read on-chain state */
+    walletAddress: string
+    /** Forwarded from SDK config so the popup picks the right RPC */
+    network: SoulPassNetwork
+  }
 }
 
 export interface SDKSignMessageMessage {
   type: 'SIGN_MESSAGE'
   id: string
-  payload: { message: string } // base64
+  payload: {
+    /** base64 message bytes */
+    message: string
+    walletAddress: string
+    network: SoulPassNetwork
+  }
 }
 
 export type SDKMessage =
@@ -56,6 +90,12 @@ export interface PopupConnectSuccessMessage {
   payload: {
     publicKey: string       // Ed25519 base58
     walletAddress: string   // MachineWallet base58
+    /**
+     * Optional matrix-user session. Present when the popup successfully
+     * completed `/auth/passkey/signin/verify`. Older popup builds (≤ 0.1.x)
+     * omit this field — dApps must treat it as optional for back-compat.
+     */
+    session?: SoulPassSession
   }
 }
 
@@ -63,8 +103,19 @@ export interface PopupSignSuccessMessage {
   type: 'SIGN_SUCCESS'
   id: string
   payload: {
-    signature: string            // base64
-    signedTransaction?: string   // base64
+    /**
+     * SIGN_TRANSACTION: Solana transaction signature (base58) — the tx has
+     *   already been submitted by the wallet; this signature is what a dApp
+     *   passes to `connection.confirmTransaction`.
+     * SIGN_MESSAGE: raw WebAuthn assertion signature (base64).
+     */
+    signature: string
+    /** Reserved; kept for adapter compatibility. Always undefined post-v0.1. */
+    signedTransaction?: string
+    /** SIGN_MESSAGE only: base64 authenticatorData needed to verify the signature. */
+    authenticatorData?: string
+    /** SIGN_MESSAGE only: base64 clientDataJSON needed to verify the signature. */
+    clientDataJSON?: string
   }
 }
 
