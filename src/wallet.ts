@@ -57,7 +57,12 @@ export class SoulPassWallet {
           this.popup.send({
             type: 'CONNECT',
             id,
-            payload: { network: this.config.network },
+            payload: {
+              network: this.config.network,
+              // Spread-conditional so older popup builds (which strictly typecheck the
+              // payload) don't see an explicit `productType: undefined` key.
+              ...(this.config.productType ? { productType: this.config.productType } : {}),
+            },
           })
           return
         }

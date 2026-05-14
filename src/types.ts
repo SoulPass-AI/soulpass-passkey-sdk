@@ -9,6 +9,24 @@ export interface SoulPassWalletConfig {
   endpoint?: string
   /** Override signing page base URL (default: https://soulpass.ai) */
   walletUrl?: string
+  /**
+   * Calling product's productType (matches matrix-backend's
+   * `ProductType.getName()`, e.g. `'tens'`, `'tigerpass'`). Forwarded to the
+   * popup so the matrix-user JWT is stored under the *caller's* product
+   * namespace in Redis — not the popup's own (`'soulpass'`).
+   *
+   * Why this matters: the popup is hosted on soulpass.ai and its
+   * `X-Exchange-Info` carries `productType=soulpass`. Without this override
+   * the JWT lands under `matrix:jwt:{userId}:soulpass:...`, but the Gateway
+   * on the caller's domain reads `matrix:jwt:{userId}:tens:...` on every
+   * subsequent request, surfaces "JWT not found in Redis", and returns 401
+   * right after sign-in.
+   *
+   * Optional for back-compat with older popup builds that don't honour the
+   * field — they fall back to their own X-Exchange-Info productType. New
+   * dApp integrations should always set this.
+   */
+  productType?: string
 }
 
 // --- Wallet State ---
@@ -46,7 +64,19 @@ export type SDKMessageType = 'CONNECT' | 'SIGN_TRANSACTION' | 'SIGN_MESSAGE'
 export interface SDKConnectMessage {
   type: 'CONNECT'
   id: string
-  payload: { network: SoulPassNetwork }
+  payload: {
+    network: SoulPassNetwork
+    /**
+     * Calling dApp's productType — see {@link SoulPassWalletConfig.productType}.
+     * The popup forwards this verbatim to matrix-user's
+     * `/auth/passkey/signin/verify` request body as `clientProductType`, which
+     * decides the Redis namespace the issued JWT lands in.
+     *
+     * Optional: older popup builds ignore this field, and that's fine for
+     * single-product deployments where popup.productType == caller.productType.
+     */
+    productType?: string
+  }
 }
 
 export interface SDKSignTransactionMessage {
