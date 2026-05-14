@@ -5,6 +5,8 @@ import type {
   SoulPassSession,
   SDKSignTransactionMessage,
   SDKSignMessageMessage,
+  SignTransactionSession,
+  SignMessageSession,
 } from './types'
 import { DEFAULT_WALLET_URL } from './types'
 
@@ -83,22 +85,81 @@ export class SoulPassWallet {
     })
   }
 
-  async signTransaction(serializedTx: Uint8Array): Promise<{ signature: string }> {
+  /**
+   * Synchronously open the sign popup so this call survives in the click-handler
+   * tick — the only window during which `window.open()` produces an actual popup
+   * window rather than a new browser tab (transient user activation). Return a
+   * single-shot session whose `.send(tx)` posts the serialized transaction once
+   * the dApp's async tx-build finishes; the popup shows "Waiting for
+   * transaction…" in between.
+   *
+   * Misuse note: callers must invoke this from a click / pointer event handler,
+   * not from a useEffect or after an `await`. Outside a user gesture, browsers
+   * either block the popup or downgrade it to a tab.
+   */
+  beginSignTransaction(): SignTransactionSession {
     this.assertConnected()
-    const result = await this.requestSign({
-      type: 'SIGN_TRANSACTION',
-      id: this.popup.generateId(),
-      payload: {
-        transaction: uint8ArrayToBase64(serializedTx),
-        ...this.signContext,
+    return this.beginSign<{ signature: string }>(
+      '/wallet/sign',
+      (id, data: Uint8Array) => ({
+        type: 'SIGN_TRANSACTION',
+        id,
+        payload: {
+          transaction: uint8ArrayToBase64(data),
+          ...this.signContext,
+        },
+      }),
+      (msg) => ({ signature: msg.payload.signature }),
+    )
+  }
+
+  /**
+   * Two-phase counterpart of `signMessage` — see `beginSignTransaction` for
+   * timing semantics. Returns base64-decoded WebAuthn fields verbatim.
+   */
+  beginSignMessage(): SignMessageSession {
+    this.assertConnected()
+    return this.beginSign<{
+      signature: Uint8Array
+      authenticatorData: Uint8Array
+      clientDataJSON: Uint8Array
+    }>(
+      '/wallet/message',
+      (id, data: Uint8Array) => ({
+        type: 'SIGN_MESSAGE',
+        id,
+        payload: {
+          message: uint8ArrayToBase64(data),
+          ...this.signContext,
+        },
+      }),
+      (msg) => {
+        if (!msg.payload.authenticatorData || !msg.payload.clientDataJSON) {
+          throw new Error('SIGN_MESSAGE response missing WebAuthn fields')
+        }
+        return {
+          signature: base64ToUint8Array(msg.payload.signature),
+          authenticatorData: base64ToUint8Array(msg.payload.authenticatorData),
+          clientDataJSON: base64ToUint8Array(msg.payload.clientDataJSON),
+        }
       },
-    }, '/wallet/sign')
-    return { signature: result.signature }
+    )
+  }
+
+  /**
+   * One-shot signing — only safe when the caller already has the tx bytes
+   * available in the same synchronous tick as the user click. Most async tx
+   * builds (RPC blockhash fetches, anchor IDL setup) cross a microtask
+   * boundary, at which point the click gesture is gone and the popup
+   * downgrades to a tab. Prefer `beginSignTransaction()` for those flows.
+   */
+  async signTransaction(serializedTx: Uint8Array): Promise<{ signature: string }> {
+    return this.beginSignTransaction().send(serializedTx)
   }
 
   async signAndSendTransaction(serializedTx: Uint8Array): Promise<string> {
-    const result = await this.signTransaction(serializedTx)
-    return result.signature
+    const { signature } = await this.signTransaction(serializedTx)
+    return signature
   }
 
   async signMessage(message: Uint8Array): Promise<{
@@ -106,23 +167,7 @@ export class SoulPassWallet {
     authenticatorData: Uint8Array
     clientDataJSON: Uint8Array
   }> {
-    this.assertConnected()
-    const result = await this.requestSign({
-      type: 'SIGN_MESSAGE',
-      id: this.popup.generateId(),
-      payload: {
-        message: uint8ArrayToBase64(message),
-        ...this.signContext,
-      },
-    }, '/wallet/message')
-    if (!result.authenticatorData || !result.clientDataJSON) {
-      throw new Error('SIGN_MESSAGE response missing WebAuthn fields')
-    }
-    return {
-      signature: base64ToUint8Array(result.signature),
-      authenticatorData: base64ToUint8Array(result.authenticatorData),
-      clientDataJSON: base64ToUint8Array(result.clientDataJSON),
-    }
+    return this.beginSignMessage().send(message)
   }
 
   disconnect(): void {
@@ -174,38 +219,101 @@ export class SoulPassWallet {
     }
   }
 
-  private requestSign(
-    message: SDKSignTransactionMessage | SDKSignMessageMessage,
+  /**
+   * Generic two-phase sign session. `buildMessage` and `parseSuccess` adapt the
+   * shared state machine to the per-flow message types so SIGN_TRANSACTION and
+   * SIGN_MESSAGE can share the popup-ready/queue/cleanup wiring.
+   *
+   * State machine:
+   *   1. popup.open() runs synchronously here (preserves user gesture).
+   *   2. onMessage waits for popup READY; if data has arrived, flush; else stash.
+   *   3. send(data): if popup is READY, post immediately; else stash and return
+   *      a promise that resolves on SIGN_SUCCESS / rejects on ERROR or cancel.
+   *   4. cancel(): closes popup and rejects any pending send() with CANCELLED.
+   */
+  private beginSign<R>(
     path: string,
-  ): Promise<{
-    signature: string
-    authenticatorData?: string
-    clientDataJSON?: string
-  }> {
-    return new Promise((resolve, reject) => {
-      this.popup.onMessage((msg: PopupMessage) => {
-        if (msg.type === 'READY') {
-          this.popup.send(message)
-          return
+    buildMessage: (id: string, data: Uint8Array) => SDKSignTransactionMessage | SDKSignMessageMessage,
+    parseSuccess: (msg: Extract<PopupMessage, { type: 'SIGN_SUCCESS' }>) => R,
+  ): { send: (data: Uint8Array) => Promise<R>; cancel: (reason?: string) => void } {
+    const id = this.popup.generateId()
+
+    let popupReady = false
+    // Stashed payload when send() is called before popup READY. We keep it as
+    // the prebuilt SDKMessage rather than raw bytes so we don't have to thread
+    // `id` into the closure on the send path.
+    let queuedMessage: SDKSignTransactionMessage | SDKSignMessageMessage | null = null
+    let closed = false
+    let sendCalled = false
+    let pending: { resolve: (r: R) => void; reject: (e: Error) => void } | null = null
+
+    const cleanup = () => {
+      if (closed) return
+      closed = true
+      this.popup.close()
+    }
+
+    this.popup.onMessage((msg: PopupMessage) => {
+      if (closed) return
+      if (msg.type === 'READY') {
+        popupReady = true
+        // Flush queued payload exactly once. If send() hasn't been called yet,
+        // we stay idle — the popup's own UI shows "Waiting for transaction…"
+        // until either send() arrives or the user closes the popup.
+        if (queuedMessage) {
+          const m = queuedMessage
+          queuedMessage = null
+          this.popup.send(m)
         }
-
-        if ('id' in msg && msg.id !== message.id) return
-
-        if (msg.type === 'SIGN_SUCCESS') {
-          this.popup.close()
-          resolve({
-            signature: msg.payload.signature,
-            authenticatorData: msg.payload.authenticatorData,
-            clientDataJSON: msg.payload.clientDataJSON,
-          })
-        } else if (msg.type === 'ERROR') {
-          this.popup.close()
-          reject(new Error(`${msg.payload.code}: ${msg.payload.message}`))
+        return
+      }
+      if ('id' in msg && msg.id !== id) return
+      if (msg.type === 'SIGN_SUCCESS') {
+        if (pending) {
+          try {
+            pending.resolve(parseSuccess(msg))
+          } catch (err) {
+            pending.reject(err instanceof Error ? err : new Error(String(err)))
+          }
         }
-      })
-
-      this.popup.open(path)
+        cleanup()
+      } else if (msg.type === 'ERROR') {
+        pending?.reject(new Error(`${msg.payload.code}: ${msg.payload.message}`))
+        cleanup()
+      }
     })
+
+    // Sync — must run in the same task as the caller's click handler.
+    this.popup.open(path)
+
+    return {
+      send: (data: Uint8Array) => {
+        if (sendCalled) {
+          return Promise.reject(new Error('Session already used — beginSign is single-shot'))
+        }
+        sendCalled = true
+        if (closed) {
+          return Promise.reject(new Error('CANCELLED: session was cancelled before send'))
+        }
+        return new Promise<R>((resolve, reject) => {
+          pending = { resolve, reject }
+          const message = buildMessage(id, data)
+          if (popupReady) {
+            this.popup.send(message)
+          } else {
+            // popup is still loading — stash and let onMessage flush on READY.
+            queuedMessage = message
+          }
+        })
+      },
+      cancel: (reason?: string) => {
+        if (closed) return
+        if (pending) {
+          pending.reject(new Error(`CANCELLED: ${reason ?? 'session cancelled'}`))
+        }
+        cleanup()
+      },
+    }
   }
 
   private emit(event: EventType, ...args: any[]): void {

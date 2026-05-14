@@ -11,7 +11,12 @@ import type {
 } from '@solana/web3.js'
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js'
 import { SoulPassWallet } from '../wallet'
-import type { SoulPassWalletConfig, SoulPassSession } from '../types'
+import type {
+  SoulPassWalletConfig,
+  SoulPassSession,
+  SignTransactionSession,
+  SignMessageSession,
+} from '../types'
 
 export const SoulPassWalletName = 'SoulPass' as WalletName<'SoulPass'>
 
@@ -59,6 +64,24 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
    */
   get session(): SoulPassSession | null {
     return this.wallet.session
+  }
+
+  /**
+   * Open the sign popup synchronously inside a click handler so the dApp can
+   * preserve transient user activation while async tx-build is still pending.
+   * The returned session's `.send(serializedTx)` posts the bytes to the popup
+   * once they're ready. See `SoulPassWallet.beginSignTransaction` for the
+   * timing rules — this is just a passthrough so dApp code that holds the
+   * adapter instance doesn't need a reference to the inner wallet.
+   */
+  beginSignTransaction(): SignTransactionSession {
+    return this.wallet.beginSignTransaction()
+  }
+
+  /** Same gesture-preserving two-phase contract as `beginSignTransaction`, for
+   * WebAuthn-bound message signing. */
+  beginSignMessage(): SignMessageSession {
+    return this.wallet.beginSignMessage()
   }
 
   get publicKey(): PublicKey | null {

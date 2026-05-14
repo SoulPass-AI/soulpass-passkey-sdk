@@ -108,6 +108,45 @@ export type SDKMessage =
   | SDKSignTransactionMessage
   | SDKSignMessageMessage
 
+// --- Two-phase sign session: open popup in the click-handler tick, post the
+// actual payload later when the dApp's async tx-build resolves. The popup
+// already supports a waiting/placeholder phase (the sign page renders
+// "Waiting for transaction…" until SIGN_TRANSACTION arrives) — this API just
+// reflects the split on the SDK side so the caller can split the
+// gesture-preserving open() from the data-ready send(). ---
+
+/**
+ * Reason a sign session ended without a signature. Surfaces through
+ * `SignSession.send()`'s rejected promise so the dApp can branch on the
+ * coarse outcome without parsing error strings.
+ */
+export type SignSessionError =
+  | { code: 'USER_REJECTED'; message: string }
+  | { code: 'PASSKEY_FAILED'; message: string }
+  | { code: 'NETWORK_ERROR'; message: string }
+  | { code: 'POPUP_CLOSED'; message: string }
+  | { code: 'CANCELLED'; message: string }
+  | { code: 'UNKNOWN'; message: string }
+
+export interface SignTransactionSession {
+  /** Deliver the serialized transaction to the popup. Resolves with the
+   * Solana signature once the popup completes; rejects on failure. Calling
+   * twice on the same session throws — sessions are single-shot. */
+  send(serializedTx: Uint8Array): Promise<{ signature: string }>
+  /** Close the popup without sending data. Subsequent `send()` rejects with
+   * `CANCELLED`. Safe to call multiple times; no-op after `send()` resolves. */
+  cancel(reason?: string): void
+}
+
+export interface SignMessageSession {
+  send(message: Uint8Array): Promise<{
+    signature: Uint8Array
+    authenticatorData: Uint8Array
+    clientDataJSON: Uint8Array
+  }>
+  cancel(reason?: string): void
+}
+
 // --- postMessage Protocol: Popup → SDK ---
 
 export interface PopupReadyMessage {
