@@ -16,6 +16,7 @@ import type {
   SoulPassSession,
   SignTransactionSession,
   SignMessageSession,
+  BatchSignTransactionSession,
 } from '../types'
 
 export const SoulPassWalletName = 'SoulPass' as WalletName<'SoulPass'>
@@ -82,6 +83,15 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
    * WebAuthn-bound message signing. */
   beginSignMessage(): SignMessageSession {
     return this.wallet.beginSignMessage()
+  }
+
+  /**
+   * Batch counterpart of `beginSignTransaction` — opens the popup once and
+   * handles N consecutive signs in the same window. See
+   * `SoulPassWallet.beginBatchSignTransaction` for timing rules and contract.
+   */
+  beginBatchSignTransaction(): BatchSignTransactionSession {
+    return this.wallet.beginBatchSignTransaction()
   }
 
   get publicKey(): PublicKey | null {

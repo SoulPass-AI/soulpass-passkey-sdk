@@ -125,6 +125,16 @@ export interface SignTransactionSession {
   cancel(reason?: string): void
 }
 
+/**
+ * Multi-shot counterpart of `SignTransactionSession`. The popup is opened ONCE
+ * and stays open across N consecutive signs; `send()` may be called serially N
+ * times. Structurally identical to `SignTransactionSession` — the single-shot
+ * vs multi-shot contract is enforced by the session implementation, not the type.
+ *
+ * Call `cancel()` when done (success or error) — it is idempotent.
+ */
+export type BatchSignTransactionSession = SignTransactionSession
+
 export interface SignMessageSession {
   send(message: Uint8Array): Promise<{
     signature: Uint8Array

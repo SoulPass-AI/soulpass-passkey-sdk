@@ -7,6 +7,7 @@ import type {
   SDKSignMessageMessage,
   SignTransactionSession,
   SignMessageSession,
+  BatchSignTransactionSession,
 } from './types'
 import { DEFAULT_WALLET_URL } from './types'
 
@@ -142,6 +143,101 @@ export class SoulPassWallet {
         }
       },
     )
+  }
+
+  /**
+   * Open the sign popup ONCE and keep it open across N consecutive signs.
+   *
+   * MUST be called synchronously inside a click / pointer event handler —
+   * same timing constraint as `beginSignTransaction`. Each subsequent
+   * `session.send()` posts a new SIGN_TRANSACTION to the already-open popup
+   * (which resets to its waiting state after each approval), avoiding the
+   * re-open activation requirement that turns looped single-shot calls into
+   * new browser tabs.
+   *
+   * Call `session.cancel()` when the batch is done (success or error) to
+   * close the popup. It is idempotent.
+   */
+  beginBatchSignTransaction(): BatchSignTransactionSession {
+    this.assertConnected()
+
+    let closed = false
+    let watchdogId: ReturnType<typeof setInterval> | null = null
+    let currentPending: { resolve: (r: { signature: string }) => void; reject: (e: Error) => void } | null = null
+    let currentId: string | null = null
+    let ready = false
+    let queuedMessage: SDKSignTransactionMessage | null = null
+
+    const closeAll = () => {
+      if (closed) return
+      closed = true
+      if (watchdogId !== null) { clearInterval(watchdogId); watchdogId = null }
+      this.popup.close()
+    }
+
+    this.popup.onMessage((msg: PopupMessage) => {
+      if (closed) return
+      if (msg.type === 'READY') {
+        ready = true
+        if (queuedMessage) { const m = queuedMessage; queuedMessage = null; this.popup.send(m) }
+        return
+      }
+      if (!('id' in msg) || msg.id !== currentId) return
+      if (msg.type === 'SIGN_SUCCESS') {
+        const p = currentPending
+        currentPending = null
+        currentId = null
+        p?.resolve({ signature: msg.payload.signature })
+      } else if (msg.type === 'ERROR') {
+        const p = currentPending
+        currentPending = null
+        currentId = null
+        closeAll()
+        p?.reject(new Error(`${msg.payload.code}: ${msg.payload.message}`))
+      }
+    })
+
+    this.popup.open('/wallet/sign')
+
+    watchdogId = setInterval(() => {
+      if (closed) return
+      if (!this.popup.isOpen) {
+        const p = currentPending
+        currentPending = null
+        currentId = null
+        closeAll()
+        p?.reject(new Error('POPUP_CLOSED: user closed the wallet window'))
+      }
+    }, 500)
+
+    return {
+      send: (serializedTx: Uint8Array): Promise<{ signature: string }> => {
+        if (closed) return Promise.reject(new Error('CANCELLED: batch session is closed'))
+        if (currentPending) return Promise.reject(new Error('Previous send() is still pending — batch is single-in-flight'))
+        return new Promise<{ signature: string }>((resolve, reject) => {
+          const id = this.popup.generateId()
+          currentId = id
+          currentPending = { resolve, reject }
+          const message: SDKSignTransactionMessage = {
+            type: 'SIGN_TRANSACTION',
+            id,
+            payload: { transaction: uint8ArrayToBase64(serializedTx), ...this.signContext },
+          }
+          if (ready) {
+            this.popup.send(message)
+          } else {
+            queuedMessage = message
+          }
+        })
+      },
+      cancel: (reason?: string): void => {
+        const p = currentPending
+        currentPending = null
+        currentId = null
+        closeAll()
+        p?.reject(new Error(`CANCELLED: ${reason ?? 'batch session cancelled'}`))
+      },
+    }
   }
 
   /** Convenience wrapper over {@link beginSignTransaction} for callers whose
