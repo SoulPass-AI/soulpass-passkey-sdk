@@ -86,16 +86,14 @@ export class SoulPassWallet {
   }
 
   /**
-   * Synchronously open the sign popup so this call survives in the click-handler
-   * tick — the only window during which `window.open()` produces an actual popup
-   * window rather than a new browser tab (transient user activation). Return a
-   * single-shot session whose `.send(tx)` posts the serialized transaction once
-   * the dApp's async tx-build finishes; the popup shows "Waiting for
-   * transaction…" in between.
+   * Synchronously open the sign popup inside the click-handler tick — the
+   * only window during which `window.open()` produces a real popup window
+   * rather than a downgraded new tab (transient user activation). Returns a
+   * single-shot session; the dApp posts the serialized tx through
+   * `.send()` once its async build resolves.
    *
-   * Misuse note: callers must invoke this from a click / pointer event handler,
-   * not from a useEffect or after an `await`. Outside a user gesture, browsers
-   * either block the popup or downgrade it to a tab.
+   * MUST be called from a click / pointer event handler. Calling from a
+   * useEffect or after an `await` loses the user-activation flag.
    */
   beginSignTransaction(): SignTransactionSession {
     this.assertConnected()
@@ -146,13 +144,9 @@ export class SoulPassWallet {
     )
   }
 
-  /**
-   * One-shot signing — only safe when the caller already has the tx bytes
-   * available in the same synchronous tick as the user click. Most async tx
-   * builds (RPC blockhash fetches, anchor IDL setup) cross a microtask
-   * boundary, at which point the click gesture is gone and the popup
-   * downgrades to a tab. Prefer `beginSignTransaction()` for those flows.
-   */
+  /** Convenience wrapper over {@link beginSignTransaction} for callers whose
+   * tx bytes are ready in the same tick as the user click. Most async
+   * tx-build flows should use `beginSignTransaction()` directly. */
   async signTransaction(serializedTx: Uint8Array): Promise<{ signature: string }> {
     return this.beginSignTransaction().send(serializedTx)
   }
@@ -220,16 +214,9 @@ export class SoulPassWallet {
   }
 
   /**
-   * Generic two-phase sign session. `buildMessage` and `parseSuccess` adapt the
-   * shared state machine to the per-flow message types so SIGN_TRANSACTION and
-   * SIGN_MESSAGE can share the popup-ready/queue/cleanup wiring.
-   *
-   * State machine:
-   *   1. popup.open() runs synchronously here (preserves user gesture).
-   *   2. onMessage waits for popup READY; if data has arrived, flush; else stash.
-   *   3. send(data): if popup is READY, post immediately; else stash and return
-   *      a promise that resolves on SIGN_SUCCESS / rejects on ERROR or cancel.
-   *   4. cancel(): closes popup and rejects any pending send() with CANCELLED.
+   * Generic two-phase sign session. `buildMessage` and `parseSuccess` adapt
+   * the shared state machine to per-flow message types so SIGN_TRANSACTION
+   * and SIGN_MESSAGE can share the popup-ready / queue / cleanup wiring.
    */
   private beginSign<R>(
     path: string,
@@ -239,17 +226,24 @@ export class SoulPassWallet {
     const id = this.popup.generateId()
 
     let popupReady = false
-    // Stashed payload when send() is called before popup READY. We keep it as
-    // the prebuilt SDKMessage rather than raw bytes so we don't have to thread
-    // `id` into the closure on the send path.
+    // Stashed payload when send() is called before popup READY. Stored as the
+    // prebuilt SDKMessage so onMessage doesn't need to re-thread `id`.
     let queuedMessage: SDKSignTransactionMessage | SDKSignMessageMessage | null = null
     let closed = false
     let sendCalled = false
     let pending: { resolve: (r: R) => void; reject: (e: Error) => void } | null = null
+    // Watchdog so a popup the user closes manually (OS chrome ✕) — which
+    // emits no postMessage — doesn't leave `pending` permanently unresolved.
+    // Reset on cleanup so we don't double-poll after explicit cancel/success.
+    let closedWatchdog: ReturnType<typeof setInterval> | null = null
 
     const cleanup = () => {
       if (closed) return
       closed = true
+      if (closedWatchdog !== null) {
+        clearInterval(closedWatchdog)
+        closedWatchdog = null
+      }
       this.popup.close()
     }
 
@@ -257,9 +251,6 @@ export class SoulPassWallet {
       if (closed) return
       if (msg.type === 'READY') {
         popupReady = true
-        // Flush queued payload exactly once. If send() hasn't been called yet,
-        // we stay idle — the popup's own UI shows "Waiting for transaction…"
-        // until either send() arrives or the user closes the popup.
         if (queuedMessage) {
           const m = queuedMessage
           queuedMessage = null
@@ -283,8 +274,18 @@ export class SoulPassWallet {
       }
     })
 
-    // Sync — must run in the same task as the caller's click handler.
     this.popup.open(path)
+
+    // Poll the popup window for an OS-level close. 500ms is fast enough that
+    // the dApp sees a reject within a UI tick of the user closing, and slow
+    // enough that the polling cost (~1 boolean read per 500ms) is invisible.
+    closedWatchdog = setInterval(() => {
+      if (closed) return
+      if (!this.popup.isOpen) {
+        pending?.reject(new Error('POPUP_CLOSED: user closed the wallet window'))
+        cleanup()
+      }
+    }, 500)
 
     return {
       send: (data: Uint8Array) => {
@@ -301,7 +302,6 @@ export class SoulPassWallet {
           if (popupReady) {
             this.popup.send(message)
           } else {
-            // popup is still loading — stash and let onMessage flush on READY.
             queuedMessage = message
           }
         })
