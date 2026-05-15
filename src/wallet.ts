@@ -8,6 +8,7 @@ import type {
   SignTransactionSession,
   SignMessageSession,
   BatchSignTransactionSession,
+  SignTransactionOptions,
 } from './types'
 import { DEFAULT_WALLET_URL } from './types'
 
@@ -98,15 +99,12 @@ export class SoulPassWallet {
    */
   beginSignTransaction(): SignTransactionSession {
     this.assertConnected()
-    return this.beginSign<{ signature: string }>(
+    return this.beginSign<{ signature: string }, SignTransactionOptions>(
       '/wallet/sign',
-      (id, data: Uint8Array) => ({
+      (id, data: Uint8Array, options?: SignTransactionOptions) => ({
         type: 'SIGN_TRANSACTION',
         id,
-        payload: {
-          transaction: uint8ArrayToBase64(data),
-          ...this.signContext,
-        },
+        payload: this.buildSignTxPayload(data, options),
       }),
       (msg) => ({ signature: msg.payload.signature }),
     )
@@ -211,7 +209,10 @@ export class SoulPassWallet {
     }, 500)
 
     return {
-      send: (serializedTx: Uint8Array): Promise<{ signature: string }> => {
+      send: (
+        serializedTx: Uint8Array,
+        options?: SignTransactionOptions,
+      ): Promise<{ signature: string }> => {
         if (closed) return Promise.reject(new Error('CANCELLED: batch session is closed'))
         if (currentPending) return Promise.reject(new Error('Previous send() is still pending — batch is single-in-flight'))
         return new Promise<{ signature: string }>((resolve, reject) => {
@@ -221,7 +222,7 @@ export class SoulPassWallet {
           const message: SDKSignTransactionMessage = {
             type: 'SIGN_TRANSACTION',
             id,
-            payload: { transaction: uint8ArrayToBase64(serializedTx), ...this.signContext },
+            payload: this.buildSignTxPayload(serializedTx, options),
           }
           if (ready) {
             this.popup.send(message)
@@ -243,12 +244,18 @@ export class SoulPassWallet {
   /** Convenience wrapper over {@link beginSignTransaction} for callers whose
    * tx bytes are ready in the same tick as the user click. Most async
    * tx-build flows should use `beginSignTransaction()` directly. */
-  async signTransaction(serializedTx: Uint8Array): Promise<{ signature: string }> {
-    return this.beginSignTransaction().send(serializedTx)
+  async signTransaction(
+    serializedTx: Uint8Array,
+    options?: SignTransactionOptions,
+  ): Promise<{ signature: string }> {
+    return this.beginSignTransaction().send(serializedTx, options)
   }
 
-  async signAndSendTransaction(serializedTx: Uint8Array): Promise<string> {
-    const { signature } = await this.signTransaction(serializedTx)
+  async signAndSendTransaction(
+    serializedTx: Uint8Array,
+    options?: SignTransactionOptions,
+  ): Promise<string> {
+    const { signature } = await this.signTransaction(serializedTx, options)
     return signature
   }
 
@@ -309,16 +316,31 @@ export class SoulPassWallet {
     }
   }
 
+  private buildSignTxPayload(
+    serializedTx: Uint8Array,
+    options?: SignTransactionOptions,
+  ): SDKSignTransactionMessage['payload'] {
+    return {
+      transaction: uint8ArrayToBase64(serializedTx),
+      ...this.signContext,
+      ...(options?.altAddresses ? { altAddresses: options.altAddresses } : {}),
+    }
+  }
+
   /**
    * Generic two-phase sign session. `buildMessage` and `parseSuccess` adapt
    * the shared state machine to per-flow message types so SIGN_TRANSACTION
    * and SIGN_MESSAGE can share the popup-ready / queue / cleanup wiring.
+   *
+   * `O` carries per-`send()` options (currently only SIGN_TRANSACTION uses
+   * this for `altAddresses`); SIGN_MESSAGE callers parameterize as `void` and
+   * ignore the third arg.
    */
-  private beginSign<R>(
+  private beginSign<R, O = void>(
     path: string,
-    buildMessage: (id: string, data: Uint8Array) => SDKSignTransactionMessage | SDKSignMessageMessage,
+    buildMessage: (id: string, data: Uint8Array, options?: O) => SDKSignTransactionMessage | SDKSignMessageMessage,
     parseSuccess: (msg: Extract<PopupMessage, { type: 'SIGN_SUCCESS' }>) => R,
-  ): { send: (data: Uint8Array) => Promise<R>; cancel: (reason?: string) => void } {
+  ): { send: (data: Uint8Array, options?: O) => Promise<R>; cancel: (reason?: string) => void } {
     const id = this.popup.generateId()
 
     let popupReady = false
@@ -384,7 +406,7 @@ export class SoulPassWallet {
     }, 500)
 
     return {
-      send: (data: Uint8Array) => {
+      send: (data: Uint8Array, options?: O) => {
         if (sendCalled) {
           return Promise.reject(new Error('Session already used — beginSign is single-shot'))
         }
@@ -394,7 +416,7 @@ export class SoulPassWallet {
         }
         return new Promise<R>((resolve, reject) => {
           pending = { resolve, reject }
-          const message = buildMessage(id, data)
+          const message = buildMessage(id, data, options)
           if (popupReady) {
             this.popup.send(message)
           } else {

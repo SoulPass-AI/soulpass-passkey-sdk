@@ -89,6 +89,18 @@ export interface SDKSignTransactionMessage {
     walletAddress: string
     /** Forwarded from SDK config so the popup picks the right RPC */
     network: SoulPassNetwork
+    /**
+     * Address Lookup Table addresses (base58). When provided, the popup
+     * resolves them on-chain and compiles the inner instructions into a v0
+     * VersionedTransaction, saving ~150 bytes per ALT-covered account
+     * (a 32-byte pubkey collapses to a 1-byte index). Required for swap and
+     * other dense flows that exceed the 1232-byte legacy tx limit.
+     *
+     * Without ALT, the popup falls back to legacy / minimal v0 assembly
+     * which works for short ix lists (CreateWallet, send-token, simple NFT
+     * ops) — see soulpass-ai/lib/machine-wallet-tx.ts.
+     */
+    altAddresses?: string[]
   }
 }
 
@@ -115,11 +127,27 @@ export type SDKMessage =
 // reflects the split on the SDK side so the caller can split the
 // gesture-preserving open() from the data-ready send(). ---
 
+/**
+ * Per-tx options passed alongside the serialized transaction.
+ *
+ * Kept as a separate parameter (not bundled into the tx bytes) so the popup
+ * can use them to choose its assembly strategy — e.g. ALT addresses are
+ * resolved on-chain and fed into v0 message compilation, not part of the tx
+ * blob the dApp serialized.
+ */
+export interface SignTransactionOptions {
+  /** See {@link SDKSignTransactionMessage.payload.altAddresses}. */
+  altAddresses?: string[]
+}
+
 export interface SignTransactionSession {
   /** Deliver the serialized transaction to the popup. Resolves with the
    * Solana signature once the popup completes; rejects on failure. Calling
    * twice on the same session throws — sessions are single-shot. */
-  send(serializedTx: Uint8Array): Promise<{ signature: string }>
+  send(
+    serializedTx: Uint8Array,
+    options?: SignTransactionOptions,
+  ): Promise<{ signature: string }>
   /** Close the popup without sending data. Subsequent `send()` rejects with
    * `CANCELLED`. Safe to call multiple times; no-op after `send()` resolves. */
   cancel(reason?: string): void

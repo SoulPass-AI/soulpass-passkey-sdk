@@ -6,6 +6,7 @@ export type {
   SignTransactionSession,
   SignMessageSession,
   BatchSignTransactionSession,
+  SignTransactionOptions,
 } from './types'
 export {
   SoulPassWalletAdapter,
