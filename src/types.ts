@@ -101,6 +101,25 @@ export interface SDKSignTransactionMessage {
      * ops) — see soulpass-ai/lib/machine-wallet-tx.ts.
      */
     altAddresses?: string[]
+    /**
+     * Caller-supplied bumps for per-Execute ephemeral signer PDAs. When
+     * provided AND non-empty, the popup compiles the inner instructions
+     * into a `disc=16 ExecuteWithEphemeralSigners` call, where each bump
+     * is fed into `Pubkey::create_program_address` against seeds
+     * `["machine_ephemeral", walletAddress, walletNonce_le, index, bump]`.
+     * Inner-ix accounts referencing those derived PDAs must set
+     * `AccountEntry.FLAG_EPHEMERAL_SIGNER` (bit 1) so the on-chain handler
+     * promotes them to signer at CPI time.
+     *
+     * Length must match the number of ephemeral signers the dApp asked
+     * for via {@link deriveEphemeralSigners}; reusing those PDAs in the
+     * inner ixs is the dApp's responsibility. Maximum is the program's
+     * MAX_EPHEMERAL_SIGNERS (4).
+     *
+     * Omit or pass an empty array to use the legacy `disc=1 Execute`
+     * path — no behaviour change for non-ephemeral flows.
+     */
+    ephemeralSignerBumps?: number[]
   }
 }
 
@@ -138,6 +157,14 @@ export type SDKMessage =
 export interface SignTransactionOptions {
   /** See {@link SDKSignTransactionMessage.payload.altAddresses}. */
   altAddresses?: string[]
+  /**
+   * Bumps for the ephemeral signer PDAs the dApp derived via
+   * {@link deriveEphemeralSigners}. Their pubkeys must already appear in the
+   * inner instructions flagged with `FLAG_EPHEMERAL_SIGNER`.
+   *
+   * See {@link SDKSignTransactionMessage.payload.ephemeralSignerBumps}.
+   */
+  ephemeralSignerBumps?: number[]
 }
 
 export interface SignTransactionSession {

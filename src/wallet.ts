@@ -324,6 +324,10 @@ export class SoulPassWallet {
       transaction: uint8ArrayToBase64(serializedTx),
       ...this.signContext,
       ...(options?.altAddresses ? { altAddresses: options.altAddresses } : {}),
+      // Omit when absent so older popup builds fall back to the disc=1 Execute path.
+      ...(options?.ephemeralSignerBumps && options.ephemeralSignerBumps.length > 0
+        ? { ephemeralSignerBumps: options.ephemeralSignerBumps }
+        : {}),
     }
   }
 
