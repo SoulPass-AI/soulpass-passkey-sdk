@@ -18,10 +18,7 @@
 import type { Connection, PublicKey } from '@solana/web3.js'
 
 /**
- * Byte offset of `wallet.nonce` (u64 LE) inside a serialized MachineWallet
- * v1 account body. Mirrors `machine-wallet/program/src/state.rs::MachineWallet::NONCE_OFFSET`.
- *
- * v1 header layout (53 bytes, fixed):
+ * v1 MachineWallet header layout (53 bytes, fixed):
  *
  * | range   | field           | type            |
  * |---------|-----------------|-----------------|
@@ -30,13 +27,158 @@ import type { Connection, PublicKey } from '@solana/web3.js'
  * | 2..34   | wallet_id       | [u8; 32]        |
  * | 34..35  | threshold       | u8              |
  * | 35..36  | authority_count | u8              |
- * | 36..44  | **nonce**       | u64 LE          |
+ * | 36..44  | nonce           | u64 LE          |
  * | 44..52  | creation_slot   | u64 LE          |
  * | 52..53  | vault_bump      | u8              |
  *
- * Authority slots (34 bytes each) follow the header.
+ * Authority slots (34 bytes each: `sig_scheme(1) || pubkey(33)`) follow the
+ * header. The set of offset / size constants below mirrors
+ * `machine-wallet/program/src/state.rs::MachineWallet` byte-for-byte.
  */
-export const MACHINE_WALLET_NONCE_OFFSET = 36
+export const V1_OFFSET = {
+  VERSION: 0,
+  BUMP: 1,
+  WALLET_ID: 2,
+  THRESHOLD: 34,
+  AUTHORITY_COUNT: 35,
+  NONCE: 36,
+  CREATION_SLOT: 44,
+  VAULT_BUMP: 52,
+  AUTHORITY_SLOTS_START: 53,
+} as const
+
+export const V1_HEADER_SIZE = 53
+export const AUTHORITY_SLOT_SIZE = 34
+export const V1_MIN_ACCOUNT_SIZE = V1_HEADER_SIZE + AUTHORITY_SLOT_SIZE
+
+/**
+ * @deprecated Use {@link V1_OFFSET}.NONCE instead. Kept exported so that
+ * existing consumers continue to compile while they migrate.
+ */
+export const MACHINE_WALLET_NONCE_OFFSET = V1_OFFSET.NONCE
+
+/**
+ * Authority signature schemes (mirror `program/src/state.rs::SigScheme`).
+ * The chain scanner uses these tags to route a stored authority to the
+ * correct signature verifier; **registering the wrong scheme silently locks
+ * the signer out**, so callers should always use these named values rather
+ * than literal `0`/`1`/`2`.
+ */
+export const SigScheme = {
+  /** Raw P-256 ECDSA — signer signs the 32-byte operation_hash directly. */
+  Secp256r1: 0,
+  /** Ed25519 — session keys + Ed25519 hardware. */
+  Ed25519: 1,
+  /** P-256 ECDSA via WebAuthn envelope — chain expects `auth_data ‖ sha256(cdj)`. */
+  Webauthn: 2,
+} as const
+
+export type SigSchemeValue = (typeof SigScheme)[keyof typeof SigScheme]
+
+/**
+ * Decoded v1 MachineWallet account. Returned by {@link parseWalletState}.
+ *
+ * `sigScheme` + `authority` are the *first* authority slot only — the current
+ * single-authority layout. Multi-authority callers should read additional
+ * slots at `V1_OFFSET.AUTHORITY_SLOTS_START + i * AUTHORITY_SLOT_SIZE`.
+ */
+export interface MachineWalletState {
+  version: 1
+  bump: number
+  walletId: Uint8Array // 32 bytes (keccak256(authority))
+  threshold: number
+  authorityCount: number
+  nonce: bigint
+  creationSlot: bigint
+  vaultBump: number
+  sigScheme: SigSchemeValue
+  /** 33-byte SEC1-compressed P-256 pubkey for the first authority. */
+  authority: Uint8Array
+}
+
+/**
+ * Distinct class so lazy-deploy callers can `instanceof`-match on it without
+ * resorting to error-message string sniffing. "Wallet PDA has no on-chain
+ * account yet" is a recoverable state (popup will lazy-create on first sign);
+ * a generic Error from {@link parseWalletState} (wrong version, truncated
+ * body) is not.
+ */
+export class WalletNotDeployedError extends Error {
+  constructor(public readonly walletAddress: string) {
+    super(`MachineWallet not found: ${walletAddress}`)
+    this.name = 'WalletNotDeployedError'
+  }
+}
+
+/**
+ * Parse a raw account body into a typed {@link WalletState}. Mirrors
+ * `state.rs::MachineWallet::deserialize` byte-for-byte.
+ *
+ * Throws if the body is shorter than the v1 minimum, the version byte isn't
+ * `1`, or `authority_count` is zero / would over-read the buffer. All three
+ * are unrecoverable — distinct from "account doesn't exist yet" which is the
+ * caller's responsibility to detect (typically by checking `getAccountInfo`
+ * returned null, then throwing {@link WalletNotDeployedError}).
+ */
+export function parseWalletState(data: Uint8Array): MachineWalletState {
+  if (data.length < V1_MIN_ACCOUNT_SIZE) {
+    throw new Error(
+      `MachineWallet account too small: ${data.length} < ${V1_MIN_ACCOUNT_SIZE}`,
+    )
+  }
+
+  const version = data[V1_OFFSET.VERSION]
+  if (version !== 1) {
+    throw new Error(`Unsupported MachineWallet version: ${version} (expected 1)`)
+  }
+
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  const authorityCount = data[V1_OFFSET.AUTHORITY_COUNT]
+  if (authorityCount < 1) {
+    throw new Error(`Invalid authority_count: ${authorityCount}`)
+  }
+  const expected = V1_HEADER_SIZE + authorityCount * AUTHORITY_SLOT_SIZE
+  if (data.length < expected) {
+    throw new Error(
+      `MachineWallet account too small: ${data.length} < ${expected} for ${authorityCount} authorities`,
+    )
+  }
+
+  const slotStart = V1_OFFSET.AUTHORITY_SLOTS_START
+  const sigSchemeRaw = data[slotStart]
+  if (sigSchemeRaw !== SigScheme.Secp256r1 && sigSchemeRaw !== SigScheme.Ed25519 && sigSchemeRaw !== SigScheme.Webauthn) {
+    throw new Error(`Unknown sig_scheme byte: ${sigSchemeRaw}`)
+  }
+
+  return {
+    version: 1,
+    bump: data[V1_OFFSET.BUMP],
+    walletId: data.slice(V1_OFFSET.WALLET_ID, V1_OFFSET.WALLET_ID + 32),
+    threshold: data[V1_OFFSET.THRESHOLD],
+    authorityCount,
+    nonce: view.getBigUint64(V1_OFFSET.NONCE, true),
+    creationSlot: view.getBigUint64(V1_OFFSET.CREATION_SLOT, true),
+    vaultBump: data[V1_OFFSET.VAULT_BUMP],
+    sigScheme: sigSchemeRaw as SigSchemeValue,
+    authority: data.slice(slotStart + 1, slotStart + 1 + 33),
+  }
+}
+
+/**
+ * Fetch + parse helper. Throws {@link WalletNotDeployedError} when the
+ * account doesn't exist (recoverable — the popup lazy-creates on first sign)
+ * and re-throws any parse failure verbatim (unrecoverable from this layer).
+ */
+export async function getWalletState(
+  connection: Connection,
+  walletAddress: PublicKey,
+): Promise<MachineWalletState> {
+  const account = await connection.getAccountInfo(walletAddress, 'confirmed')
+  if (!account || !account.data) {
+    throw new WalletNotDeployedError(walletAddress.toBase58())
+  }
+  return parseWalletState(new Uint8Array(account.data))
+}
 
 /**
  * Returns the `wallet.nonce` value the next `MachineWallet::Execute` will

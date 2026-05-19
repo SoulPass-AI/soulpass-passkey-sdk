@@ -29,6 +29,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/"
   },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0"
+  },
   "peerDependencies": {
     "@solana/web3.js": "^1.90.0"
   },
