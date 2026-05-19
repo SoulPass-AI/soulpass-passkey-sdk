@@ -31,7 +31,6 @@ export {
   parseWalletState,
   getWalletState,
   WalletNotDeployedError,
-  MACHINE_WALLET_NONCE_OFFSET,
   V1_OFFSET,
   V1_HEADER_SIZE,
   V1_MIN_ACCOUNT_SIZE,

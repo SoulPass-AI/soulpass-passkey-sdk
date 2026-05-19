@@ -148,15 +148,23 @@ export function buildExecuteIxData(args: {
     encodedParts.push(ix.data);
   }
 
-  const useEphemeral =
-    ephemeralSignerBumps !== undefined && ephemeralSignerBumps.length > 0;
+  const bumps =
+    ephemeralSignerBumps && ephemeralSignerBumps.length > 0
+      ? ephemeralSignerBumps
+      : undefined;
+  if (bumps && bumps.length > 255) {
+    throw new RangeError(
+      `ephemeralSignerBumps must fit in a u8 length prefix (≤255), ` +
+        `got ${bumps.length}`,
+    );
+  }
 
-  const head: Uint8Array[] = useEphemeral
+  const head: Uint8Array[] = bumps
     ? [
         Uint8Array.of(MachineWalletDisc.ExecuteWithEphemeralSigners),
         u64LE(maxSlot),
-        Uint8Array.of(ephemeralSignerBumps!.length),
-        ephemeralSignerBumps!,
+        Uint8Array.of(bumps.length),
+        bumps,
         u32LE(innerInstructions.length),
       ]
     : [

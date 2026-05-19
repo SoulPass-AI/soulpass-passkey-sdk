@@ -37,6 +37,7 @@
  */
 
 import { PublicKey } from '@solana/web3.js'
+import { u64LE } from './wire-format/_bytes'
 
 /** Mirror of `MachineWallet::EPHEMERAL_SIGNER_SEED_PREFIX` (state.rs). */
 export const EPHEMERAL_SIGNER_SEED_PREFIX = new TextEncoder().encode(
@@ -100,7 +101,7 @@ export function deriveEphemeralSigners(
   }
 
   const walletKeyBytes = walletAddress.toBytes()
-  const nonceBytes = u64ToLeBytes(walletNonce)
+  const nonceBytes = u64LE(walletNonce)
 
   const result: EphemeralSigner[] = []
   for (let i = 0; i < count; i++) {
@@ -112,14 +113,4 @@ export function deriveEphemeralSigners(
     result.push({ pubkey, bump, index: i })
   }
   return result
-}
-
-function u64ToLeBytes(value: bigint): Uint8Array {
-  const buf = new Uint8Array(8)
-  let v = value
-  for (let i = 0; i < 8; i++) {
-    buf[i] = Number(v & 0xffn)
-    v >>= 8n
-  }
-  return buf
 }

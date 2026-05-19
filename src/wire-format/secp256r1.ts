@@ -9,7 +9,7 @@
  * zeros in the signature / pubkey / auth-data slots.
  */
 
-import { u16LE, concatBytes } from './_bytes';
+import { concatBytes } from './_bytes';
 
 /** Header size (bytes 0..16). */
 const HEADER_SIZE = 16;
@@ -77,6 +77,3 @@ export function buildSecp256r1PrecompileIxData(args: {
 
   return concatBytes([header, signature, publicKey, message]);
 }
-
-/** Re-export so callers using bare `u16LE` don't need a second import path. */
-export { u16LE };

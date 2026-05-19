@@ -52,12 +52,6 @@ export const AUTHORITY_SLOT_SIZE = 34
 export const V1_MIN_ACCOUNT_SIZE = V1_HEADER_SIZE + AUTHORITY_SLOT_SIZE
 
 /**
- * @deprecated Use {@link V1_OFFSET}.NONCE instead. Kept exported so that
- * existing consumers continue to compile while they migrate.
- */
-export const MACHINE_WALLET_NONCE_OFFSET = V1_OFFSET.NONCE
-
-/**
  * Authority signature schemes (mirror `program/src/state.rs::SigScheme`).
  * The chain scanner uses these tags to route a stored authority to the
  * correct signature verifier; **registering the wrong scheme silently locks
@@ -216,27 +210,19 @@ export async function getWalletState(
  *
  * Throws
  * ------
- * - When the account exists but is shorter than `MACHINE_WALLET_NONCE_OFFSET + 8`.
- *   That's a real format incompatibility (corrupt state, or a future major
- *   version with a smaller header), distinct from the recoverable
- *   lazy-deploy case.
+ * Re-throws any {@link parseWalletState} failure (wrong version, truncated
+ * body, unknown sig_scheme) verbatim — those are real format incompatibilities
+ * distinct from the recoverable "not deployed yet" case.
  */
 export async function predictNextExecuteNonce(
   connection: Connection,
   walletAddress: PublicKey,
 ): Promise<bigint> {
-  const account = await connection.getAccountInfo(walletAddress, 'confirmed')
-  if (!account) return 0n
-  const data = account.data
-  if (data.length < MACHINE_WALLET_NONCE_OFFSET + 8) {
-    throw new Error(
-      `MachineWallet account body too short: ${data.length} bytes ` +
-        `(expected at least ${MACHINE_WALLET_NONCE_OFFSET + 8} for v1 layout) ` +
-        `— refusing to fabricate a nonce`,
-    )
+  try {
+    const state = await getWalletState(connection, walletAddress)
+    return state.nonce
+  } catch (e) {
+    if (e instanceof WalletNotDeployedError) return 0n
+    throw e
   }
-  // Use DataView (not `Buffer`) so this module stays browser-friendly
-  // without pulling Node's polyfill into the SDK bundle.
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-  return view.getBigUint64(MACHINE_WALLET_NONCE_OFFSET, true)
 }

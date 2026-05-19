@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { Keypair } from '@solana/web3.js'
 import type { AccountInfo, Connection, PublicKey } from '@solana/web3.js'
 import {
-  MACHINE_WALLET_NONCE_OFFSET,
+  V1_OFFSET,
+  V1_MIN_ACCOUNT_SIZE,
+  SigScheme,
   predictNextExecuteNonce,
 } from '../src/wallet-state'
 
@@ -19,14 +21,15 @@ function makeConnection(
   } as unknown as Connection
 }
 
-// Build a synthetic v1 account body. Only the nonce field has to be correct
-// for the parser; surrounding bytes are filled with a pattern (`0xAA`) so a
-// mis-aligned read would surface as a wrong value rather than a coincidental
-// zero.
-function makeAccountBody(nonce: bigint, totalLen = 87): Buffer {
+// Build a synthetic v1 account body that survives parseWalletState's full
+// validation. Filler is `0xAA` so a mis-aligned read surfaces as a wrong value
+// rather than a coincidental zero.
+function makeAccountBody(nonce: bigint, totalLen = V1_MIN_ACCOUNT_SIZE): Buffer {
   const buf = Buffer.alloc(totalLen, 0xaa)
-  buf[0] = 1 // version
-  buf.writeBigUInt64LE(nonce, MACHINE_WALLET_NONCE_OFFSET)
+  buf[V1_OFFSET.VERSION] = 1
+  buf[V1_OFFSET.AUTHORITY_COUNT] = 1
+  buf.writeBigUInt64LE(nonce, V1_OFFSET.NONCE)
+  buf[V1_OFFSET.AUTHORITY_SLOTS_START] = SigScheme.Webauthn
   return buf
 }
 
@@ -64,11 +67,11 @@ describe('predictNextExecuteNonce', () => {
   })
 
   it('throws when the account exists but is too short for v1', async () => {
-    // 43 bytes — one short of `NONCE_OFFSET + 8`. The contract is "missing
-    // ⇒ 0n, malformed ⇒ throw"; this asserts the second branch doesn't
-    // silently degrade into the first.
+    // Below `V1_MIN_ACCOUNT_SIZE`. Contract is "missing ⇒ 0n, malformed ⇒
+    // throw"; this asserts the second branch doesn't silently degrade into
+    // the first.
     const connection = makeConnection(async () => ({
-      data: Buffer.alloc(MACHINE_WALLET_NONCE_OFFSET + 7, 0xaa),
+      data: Buffer.alloc(V1_MIN_ACCOUNT_SIZE - 1, 0xaa),
       owner: walletAddress,
       executable: false,
       lamports: 0,
@@ -76,7 +79,7 @@ describe('predictNextExecuteNonce', () => {
     }))
     await expect(
       predictNextExecuteNonce(connection, walletAddress),
-    ).rejects.toThrow(/too short/i)
+    ).rejects.toThrow(/too small/i)
   })
 
   it('queries getAccountInfo at the wallet PDA with confirmed commitment', async () => {
