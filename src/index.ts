@@ -21,3 +21,7 @@ export type {
   EphemeralSigner,
   DeriveEphemeralSignersInput,
 } from './ephemeral-signers'
+export {
+  predictNextExecuteNonce,
+  MACHINE_WALLET_NONCE_OFFSET,
+} from './wallet-state'

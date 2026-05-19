@@ -59,7 +59,13 @@ export interface EphemeralSigner {
 export interface DeriveEphemeralSignersInput {
   /** MachineWallet account pubkey (PDA) — same value `SoulPassWallet.walletAddress` returns. */
   walletAddress: PublicKey
-  /** Current value of `wallet.nonce` from the on-chain MachineWallet account. */
+  /**
+   * Current value of `wallet.nonce` from the on-chain MachineWallet account.
+   * Use `predictNextExecuteNonce(connection, walletAddress)` to obtain this —
+   * it handles the "undeployed wallet ⇒ `0n`" contract (popup lazy-deploys
+   * CreateWallet before the dApp's Execute lands; `Execute` then reads
+   * `nonce = 0`).
+   */
   walletNonce: bigint
   /** Number of distinct ephemeral signers needed for this Execute call. */
   count: number
