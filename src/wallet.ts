@@ -9,6 +9,8 @@ import type {
   SignMessageSession,
   BatchSignTransactionSession,
   SignTransactionOptions,
+  VaultPda,
+  StatePda,
 } from './types'
 import { DEFAULT_WALLET_URL } from './types'
 
@@ -21,8 +23,11 @@ export class SoulPassWallet {
   private events = new Map<EventType, Set<EventHandler>>()
 
   private _connected = false
-  private _publicKey: string | null = null
-  private _walletAddress: string | null = null
+  // SSoT for the vault PDA — `publicKey` and `walletAddress` are both
+  // derived getters. Two storage slots would let future edits drift one
+  // without the other.
+  private _walletAddress: VaultPda | null = null
+  private _accountAddress: StatePda | null = null
   private _session: SoulPassSession | null = null
 
   constructor(config: SoulPassWalletConfig = {}) {
@@ -37,8 +42,16 @@ export class SoulPassWallet {
   // --- Public state ---
 
   get connected(): boolean { return this._connected }
-  get publicKey(): string | null { return this._publicKey }
-  get walletAddress(): string | null { return this._walletAddress }
+  /** Vault PDA — wallet-adapter idiomatic alias of {@link walletAddress}. */
+  get publicKey(): VaultPda | null { return this._walletAddress }
+  /** Vault PDA — explicit name; same value {@link publicKey} returns. */
+  get walletAddress(): VaultPda | null { return this._walletAddress }
+  /**
+   * MachineWallet **state** PDA — the program-owned account that stores
+   * nonce/authorities/threshold. Required as the seed for ephemeral signer
+   * derivation; **never the same as `walletAddress`** (vault PDA).
+   */
+  get accountAddress(): StatePda | null { return this._accountAddress }
   /**
    * The matrix-user JWT the popup obtained during signin. `null` before
    * `connect()` resolves, or when the popup build predates session
@@ -49,8 +62,9 @@ export class SoulPassWallet {
   // --- Public methods ---
 
   async connect(): Promise<{
-    publicKey: string
-    walletAddress: string
+    publicKey: VaultPda
+    walletAddress: VaultPda
+    accountAddress: StatePda
     session?: SoulPassSession
   }> {
     return new Promise((resolve, reject) => {
@@ -269,11 +283,34 @@ export class SoulPassWallet {
 
   disconnect(): void {
     this._connected = false
-    this._publicKey = null
     this._walletAddress = null
+    this._accountAddress = null
     this._session = null
     this.popup.close()
     this.emit('disconnect')
+  }
+
+  /**
+   * Re-prime in-memory state from a previously-persisted `connect()` payload.
+   * Use after a page reload where the dApp held on to the addresses + JWT
+   * (e.g. in sessionStorage) but the SDK has lost its runtime state — call
+   * before any `beginSign*()` so it passes `assertConnected()` without
+   * re-running WebAuthn.
+   *
+   * Silent: does NOT emit `connect` / `session`. Those fire on fresh popup
+   * auth only; subscribers wired to re-init UI on `connect` should not run
+   * again on a session restore.
+   */
+  restoreSession(state: {
+    publicKey: VaultPda
+    walletAddress: VaultPda
+    accountAddress: StatePda
+    session: SoulPassSession | null
+  }): void {
+    this._connected = true
+    this._walletAddress = state.walletAddress
+    this._accountAddress = state.accountAddress
+    this._session = state.session
   }
 
   // --- Events ---
@@ -290,15 +327,16 @@ export class SoulPassWallet {
   // --- Internal ---
 
   private handleConnectSuccess(payload: {
-    publicKey: string
-    walletAddress: string
+    publicKey: VaultPda
+    walletAddress: VaultPda
+    accountAddress: StatePda
     session?: SoulPassSession
   }): void {
     this._connected = true
-    this._publicKey = payload.publicKey
     this._walletAddress = payload.walletAddress
+    this._accountAddress = payload.accountAddress
     this._session = payload.session ?? null
-    this.emit('connect', payload.publicKey)
+    this.emit('connect', payload.walletAddress)
     // Separate event so session subscribers don't have to poll the getter
     // or race the 'connect' event. Fired only when the popup actually
     // forwarded a session — pre-session popup builds emit 'connect' alone.

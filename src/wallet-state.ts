@@ -15,7 +15,9 @@
  * literal had no such cross-cutting fixup path.
  */
 
-import type { Connection, PublicKey } from '@solana/web3.js'
+import type { Connection } from '@solana/web3.js'
+import type { StatePda, StatePdaKey } from './types'
+import { asStatePda } from './types'
 
 /**
  * v1 MachineWallet header layout (53 bytes, fixed):
@@ -98,7 +100,7 @@ export interface MachineWalletState {
  * body) is not.
  */
 export class WalletNotDeployedError extends Error {
-  constructor(public readonly walletAddress: string) {
+  constructor(public readonly walletAddress: StatePda) {
     super(`MachineWallet not found: ${walletAddress}`)
     this.name = 'WalletNotDeployedError'
   }
@@ -165,11 +167,11 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
  */
 export async function getWalletState(
   connection: Connection,
-  walletAddress: PublicKey,
+  walletAddress: StatePdaKey,
 ): Promise<MachineWalletState> {
   const account = await connection.getAccountInfo(walletAddress, 'confirmed')
   if (!account || !account.data) {
-    throw new WalletNotDeployedError(walletAddress.toBase58())
+    throw new WalletNotDeployedError(asStatePda(walletAddress.toBase58()))
   }
   return parseWalletState(new Uint8Array(account.data))
 }
@@ -216,7 +218,7 @@ export async function getWalletState(
  */
 export async function predictNextExecuteNonce(
   connection: Connection,
-  walletAddress: PublicKey,
+  walletAddress: StatePdaKey,
 ): Promise<bigint> {
   try {
     const state = await getWalletState(connection, walletAddress)

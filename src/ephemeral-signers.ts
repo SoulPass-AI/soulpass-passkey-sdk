@@ -38,6 +38,7 @@
 
 import { PublicKey } from '@solana/web3.js'
 import { u64LE } from './wire-format/_bytes'
+import type { StatePdaKey } from './types'
 
 /** Mirror of `MachineWallet::EPHEMERAL_SIGNER_SEED_PREFIX` (state.rs). */
 export const EPHEMERAL_SIGNER_SEED_PREFIX = new TextEncoder().encode(
@@ -58,8 +59,13 @@ export interface EphemeralSigner {
 }
 
 export interface DeriveEphemeralSignersInput {
-  /** MachineWallet account pubkey (PDA) — same value `SoulPassWallet.walletAddress` returns. */
-  walletAddress: PublicKey
+  /**
+   * MachineWallet **state** PDA (NOT the vault PDA `SoulPassWallet.walletAddress`
+   * returns). Read it from `SoulPassWallet.accountAddress` /
+   * `SoulPassWalletAdapter.accountAddress`. The brand stops the recurring
+   * 0x7d2 ConstraintSigner bug class at compile time.
+   */
+  walletAddress: StatePdaKey
   /**
    * Current value of `wallet.nonce` from the on-chain MachineWallet account.
    * Use `predictNextExecuteNonce(connection, walletAddress)` to obtain this —

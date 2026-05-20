@@ -17,7 +17,36 @@ import type {
   SignTransactionSession,
   SignMessageSession,
   BatchSignTransactionSession,
+  VaultPda,
+  StatePda,
+  StatePdaKey,
 } from '../types'
+import { asStatePdaKey } from '../types'
+
+// --- Trust-boundary validators ---
+//
+// Anywhere a base58 PDA enters the SDK from an untrusted source
+// (sessionStorage that might have been XSS'd, dApp user input), pass it
+// through one of these to assert it's a valid 32-byte Solana pubkey
+// before stamping the brand. `new PublicKey()` throws on bad bytes / wrong
+// length — we keep the exception verbatim so the stack trace points at
+// the ingest site, not at the downstream popup message that would
+// otherwise be the first to fail.
+//
+// These live in adapters/solana.ts (not types.ts) because they need
+// `PublicKey` at runtime; types.ts must stay peerDep-free.
+
+/** Validate `s` is a base58 Solana pubkey and stamp the {@link VaultPda} brand. */
+export function validateVaultPda(s: string): VaultPda {
+  new PublicKey(s)
+  return s as VaultPda
+}
+
+/** Validate `s` is a base58 Solana pubkey and stamp the {@link StatePda} brand. */
+export function validateStatePda(s: string): StatePda {
+  new PublicKey(s)
+  return s as StatePda
+}
 
 export const SoulPassWalletName = 'SoulPass' as WalletName<'SoulPass'>
 
@@ -30,19 +59,23 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
 
   private wallet: SoulPassWallet
   private _publicKey: PublicKey | null = null
+  private _accountAddress: StatePdaKey | null = null
   private _connecting = false
 
   constructor(config: SoulPassWalletConfig = {}) {
     super()
     this.wallet = new SoulPassWallet(config)
 
-    this.wallet.on('connect', (pk: string) => {
+    this.wallet.on('connect', (pk: VaultPda) => {
       this._publicKey = new PublicKey(pk)
+      const acct = this.wallet.accountAddress
+      this._accountAddress = acct ? asStatePdaKey(new PublicKey(acct)) : null
       this.emit('connect', this._publicKey)
     })
 
     this.wallet.on('disconnect', () => {
       this._publicKey = null
+      this._accountAddress = null
       this.emit('disconnect')
     })
 
@@ -98,6 +131,18 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
     return this._publicKey
   }
 
+  /**
+   * MachineWallet state PDA (NOT the vault PDA the wallet-adapter reports
+   * as `publicKey`). The protocol seed for `deriveEphemeralSigners` and
+   * `predictNextExecuteNonce`; passing `publicKey` / `walletAddress` (which
+   * are both the vault PDA) into those silently breaks disc=16 Execute.
+   *
+   * Null until `connect()` (or `restoreSession()`) resolves.
+   */
+  get accountAddress(): StatePdaKey | null {
+    return this._accountAddress
+  }
+
   get connecting(): boolean {
     return this._connecting
   }
@@ -121,6 +166,42 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
 
   async disconnect(): Promise<void> {
     this.wallet.disconnect()
+  }
+
+  /**
+   * Restore a previously-persisted SoulPass session so that `beginSign*()`
+   * is callable without re-running WebAuthn. Silent: does NOT emit the
+   * `connect` event — page-reload bootstraps should not re-trigger
+   * wallet-adapter `connect` subscribers (they already ran in the original
+   * tab session).
+   *
+   * Trust boundary: `state` may come from sessionStorage (XSS-tamperable)
+   * or dApp user input. The `new PublicKey()` calls below throw on
+   * malformed base58, halting the restore with a useful stack trace
+   * instead of leaking garbage into the next sign-popup message. The
+   * caller-friendly equivalent (`validateVaultPda` / `validateStatePda`)
+   * is exported so dApps can validate at their own persistence boundary
+   * too.
+   */
+  restoreSession(state: {
+    publicKey: VaultPda
+    walletAddress: VaultPda
+    accountAddress: StatePda
+    session: SoulPassSession | null
+  }): void {
+    if (state.publicKey !== state.walletAddress) {
+      // Wire-level invariant: both fields carry the same vault PDA.
+      // Divergence means the caller's `state` was synthesised or
+      // corrupted — fail before either value reaches the popup.
+      throw new Error(
+        `restoreSession: state.publicKey (${state.publicKey}) !== state.walletAddress (${state.walletAddress})`,
+      )
+    }
+    const vaultKey = new PublicKey(state.walletAddress)
+    const acctKey = new PublicKey(state.accountAddress)
+    this.wallet.restoreSession(state)
+    this._publicKey = vaultKey
+    this._accountAddress = asStatePdaKey(acctKey)
   }
 
   /**

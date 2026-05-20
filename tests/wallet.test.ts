@@ -18,30 +18,41 @@ describe('SoulPassWallet', () => {
     const handler = vi.fn()
     wallet.on('connect', handler)
 
-    // Simulate internal state update via private method
+    // publicKey === walletAddress is the wire-level invariant — both
+    // carry the vault PDA. Pre-dedup the test passed two different
+    // strings, which the SDK never produced and which masked the
+    // SSoT bug this dedup eliminates.
+    const vault = '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG'
+    const acct = '4rL8RczAsg3MHfJkMPXN5pzGYrmE1EWQP6pJqBrxVo'
     wallet['handleConnectSuccess']({
-      publicKey: '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG',
-      walletAddress: '4rL8RczAsg3MHfJkMPXN5pzGYrmE1EWQP6pJqBrxVo',
-    })
+      publicKey: vault,
+      walletAddress: vault,
+      accountAddress: acct,
+    } as any)
 
-    expect(handler).toHaveBeenCalledWith('7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG')
+    expect(handler).toHaveBeenCalledWith(vault)
     expect(wallet.connected).toBe(true)
-    expect(wallet.publicKey).toBe('7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG')
+    expect(wallet.publicKey).toBe(vault)
+    expect(wallet.walletAddress).toBe(vault)
+    expect(wallet.accountAddress).toBe(acct)
   })
 
   it('emits disconnect event', () => {
     const handler = vi.fn()
     wallet.on('disconnect', handler)
 
+    const vault = '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG'
     wallet['handleConnectSuccess']({
-      publicKey: '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG',
-      walletAddress: '4rL8RczAsg3MHfJkMPXN5pzGYrmE1EWQP6pJqBrxVo',
-    })
+      publicKey: vault,
+      walletAddress: vault,
+      accountAddress: '4rL8RczAsg3MHfJkMPXN5pzGYrmE1EWQP6pJqBrxVo',
+    } as any)
     wallet.disconnect()
 
     expect(handler).toHaveBeenCalled()
     expect(wallet.connected).toBe(false)
     expect(wallet.publicKey).toBeNull()
+    expect(wallet.accountAddress).toBeNull()
   })
 
   it('throws on signTransaction when disconnected', async () => {
@@ -60,7 +71,8 @@ describe('SoulPassWallet', () => {
     wallet['handleConnectSuccess']({
       publicKey: 'test',
       walletAddress: 'test',
-    })
+      accountAddress: 'test',
+    } as any)
     wallet.disconnect()
 
     expect(handler).not.toHaveBeenCalled()
@@ -118,10 +130,12 @@ describe('SoulPassWallet', () => {
 
     function connected(): SoulPassWallet {
       const w = new SoulPassWallet({ network: 'devnet' })
+      const vault = '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG'
       w['handleConnectSuccess']({
-        publicKey: '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG',
-        walletAddress: '4rL8RczAsg3MHfJkMPXN5pzGYrmE1EWQP6pJqBrxVo',
-      })
+        publicKey: vault,
+        walletAddress: vault,
+        accountAddress: '4rL8RczAsg3MHfJkMPXN5pzGYrmE1EWQP6pJqBrxVo',
+      } as any)
       return w
     }
 

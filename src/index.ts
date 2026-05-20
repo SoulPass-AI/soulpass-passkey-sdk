@@ -8,10 +8,22 @@ export type {
   SignMessageSession,
   BatchSignTransactionSession,
   SignTransactionOptions,
+  VaultPda,
+  StatePda,
+  VaultPdaKey,
+  StatePdaKey,
+} from './types'
+export {
+  asVaultPda,
+  asStatePda,
+  asVaultPdaKey,
+  asStatePdaKey,
 } from './types'
 export {
   SoulPassWalletAdapter,
   SoulPassWalletName,
+  validateVaultPda,
+  validateStatePda,
 } from './adapters/solana'
 
 // ── Ephemeral signer PDA derivation (Squads-v4 model) ────────────────────

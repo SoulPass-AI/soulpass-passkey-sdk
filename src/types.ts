@@ -1,3 +1,54 @@
+// --- Branded address types ---
+//
+// SoulPass wallets carry TWO Solana PDAs with very different semantics:
+//   • vault PDA  — SystemProgram-owned, holds funds + ATAs (user-facing).
+//   • state PDA  — program-owned MachineWallet account, holds nonce /
+//                  authorities / threshold (protocol seed for ephemeral
+//                  signer derivation + Execute nonce prediction).
+//
+// Both are base58 strings, so a plain `string` type cannot stop the recurring
+// 0x7d2 ConstraintSigner bug where the vault PDA leaks into the state PDA
+// slot (`predictNextExecuteNonce` against a SystemProgram-owned account
+// silently returns 0). Branding them as nominal types makes such misuse a
+// compile error at every API boundary.
+//
+// Use the `asVaultPda` / `asStatePda` factories at the bytes-in boundary
+// (sessionStorage rehydration, manual base58 input) to stamp the brand.
+// Use the `validateVaultPda` / `validateStatePda` helpers exported from
+// `./adapters/solana` when the bytes come from an untrusted source
+// (sessionStorage that might have been XSS'd, dApp user input) — those
+// throw on malformed base58 instead of leaking garbage downstream.
+
+// `import type` only — types.ts must stay peerDep-free at runtime so SDK
+// users who consume just the wire-format pieces don't pay the
+// @solana/web3.js cost. The PublicKey-form brands below are pure
+// compile-time refinements; their factory bodies have no PublicKey
+// runtime reference.
+import type { PublicKey } from '@solana/web3.js'
+
+declare const __vaultPdaBrand: unique symbol
+declare const __statePdaBrand: unique symbol
+declare const __vaultPdaKeyBrand: unique symbol
+declare const __statePdaKeyBrand: unique symbol
+
+/** Vault PDA (SystemProgram-owned, user-facing receive address). Base58. */
+export type VaultPda = string & { readonly [__vaultPdaBrand]: true }
+/** MachineWallet state PDA (program-owned, protocol seed). Base58. */
+export type StatePda = string & { readonly [__statePdaBrand]: true }
+/** {@link PublicKey} known to be a vault PDA. */
+export type VaultPdaKey = PublicKey & { readonly [__vaultPdaKeyBrand]: true }
+/** {@link PublicKey} known to be a MachineWallet state PDA. */
+export type StatePdaKey = PublicKey & { readonly [__statePdaKeyBrand]: true }
+
+/** Cast a raw base58 to {@link VaultPda}. Caller asserts the value is a vault PDA. */
+export function asVaultPda(addr: string): VaultPda { return addr as VaultPda }
+/** Cast a raw base58 to {@link StatePda}. Caller asserts the value is a state PDA. */
+export function asStatePda(addr: string): StatePda { return addr as StatePda }
+/** Cast a {@link PublicKey} to {@link VaultPdaKey}. Caller asserts the value is a vault PDA. */
+export function asVaultPdaKey(pk: PublicKey): VaultPdaKey { return pk as VaultPdaKey }
+/** Cast a {@link PublicKey} to {@link StatePdaKey}. Caller asserts the value is a state PDA. */
+export function asStatePdaKey(pk: PublicKey): StatePdaKey { return pk as StatePdaKey }
+
 // --- SDK Configuration ---
 
 export type SoulPassNetwork = 'mainnet-beta' | 'devnet'
@@ -33,8 +84,20 @@ export interface SoulPassWalletConfig {
 
 export interface WalletState {
   connected: boolean
-  publicKey: string | null       // Ed25519 base58
-  walletAddress: string | null   // MachineWallet base58
+  /**
+   * User-facing Solana address — the vault PDA. Same value as
+   * {@link walletAddress}; both exist so `publicKey` stays the idiomatic
+   * wallet-adapter accessor while `walletAddress` is the explicit name.
+   */
+  publicKey: VaultPda | null
+  /** Alias for {@link publicKey} — the vault PDA, base58. */
+  walletAddress: VaultPda | null
+  /**
+   * MachineWallet state PDA — distinct from {@link walletAddress}. See
+   * {@link StatePda} for the full semantics; the brand prevents accidental
+   * cross-assignment in caller code.
+   */
+  accountAddress: StatePda | null
 }
 
 // --- Session ---
@@ -85,8 +148,8 @@ export interface SDKSignTransactionMessage {
   payload: {
     /** base64-serialized Transaction (legacy or v0 without ALT) */
     transaction: string
-    /** MachineWallet PDA base58 — needed by the wallet popup to read on-chain state */
-    walletAddress: string
+    /** Vault PDA base58 — the popup derives state PDA / authorities from this. */
+    walletAddress: VaultPda
     /** Forwarded from SDK config so the popup picks the right RPC */
     network: SoulPassNetwork
     /**
@@ -129,7 +192,7 @@ export interface SDKSignMessageMessage {
   payload: {
     /** base64 message bytes */
     message: string
-    walletAddress: string
+    walletAddress: VaultPda
     network: SoulPassNetwork
   }
 }
@@ -209,8 +272,15 @@ export interface PopupConnectSuccessMessage {
   type: 'CONNECT_SUCCESS'
   id: string
   payload: {
-    publicKey: string       // Ed25519 base58
-    walletAddress: string   // MachineWallet base58
+    /** Same value as {@link walletAddress} — the vault PDA. */
+    publicKey: VaultPda
+    /** Vault PDA — user-facing receive address (funds + ATAs live here). */
+    walletAddress: VaultPda
+    /**
+     * MachineWallet state PDA — see {@link StatePda}. The brand prevents
+     * `walletAddress` (vault PDA) from being substituted here in caller code.
+     */
+    accountAddress: StatePda
     /**
      * Optional matrix-user session. Present when the popup successfully
      * completed `/auth/passkey/signin/verify`. Older popup builds (≤ 0.1.x)
