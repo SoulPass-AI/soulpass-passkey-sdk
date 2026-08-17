@@ -1,0 +1,55 @@
+{
+  "_description": "Golden vectors for compressing a WebAuthn/P-256 (x, y) coordinate pair into the 33-byte SEC1-compressed point a MachineWallet authority slot stores. Read by BOTH repos so the two independent implementations — Swift `compressWebAuthnPublicKey` (soulpass-swift-sdk/Sources/SoulPassKit/Solana/WalletStateDecoder.swift) and TypeScript `compressP256` / `formatPasskeyPubkeyXY` (soulpass-ai/lib/machine-wallet.ts, lib/wallet-api.ts) — cannot silently drift apart. A drift here means an authority gets registered on-chain that nobody holds the matching private key for.",
+  "_generatedBy": "Expected `compressed` values were produced with two mutually independent oracles, neither of which is the code under test: (1) Swift CryptoKit — `P256.Signing.PublicKey(x963Representation:).compressedRepresentation` and, for the scalar-derived point, `P256.KeyAgreement.PrivateKey(rawRepresentation: <32-byte-BE scalar>).publicKey.x963Representation`; (2) Python's `cryptography` library (OpenSSL-backed) — `ec.derive_private_key(scalar, ec.SECP256R1())` + `public_bytes(X962, CompressedPoint)`. Both oracles agreed byte-for-byte on every valid vector before this fixture was written.",
+  "valid": [
+    {
+      "name": "nist-p256-base-point-g",
+      "note": "The NIST P-256 base point G. G.y ends in 0xF5 (odd) so the compressed prefix must be 0x03. This is a well-known published constant, independently checkable against any P-256 reference.",
+      "x": "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+      "y": "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "compressed": "036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+      "xy": "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"
+    },
+    {
+      "name": "scalar-3-times-g",
+      "note": "3*G, derived as scalar multiplication of the base point by the fixed small scalar 3 (reproducible: any P-256 implementation computing 3*G lands on this exact point). Chosen specifically because its y coordinate is even, so the compressed prefix must be 0x02 — the base point alone only exercises the 0x03 branch.",
+      "x": "5ecbe4d1a6330a44c8f7ef951d4bf165e6c6b721efada985fb41661bc6e7fd6c",
+      "y": "8734640c4998ff7e374b06ce1a64a2ecd82ab036384fb83d9a79b127a27d5032",
+      "compressed": "025ecbe4d1a6330a44c8f7ef951d4bf165e6c6b721efada985fb41661bc6e7fd6c",
+      "xy": "5ecbe4d1a6330a44c8f7ef951d4bf165e6c6b721efada985fb41661bc6e7fd6c8734640c4998ff7e374b06ce1a64a2ecd82ab036384fb83d9a79b127a27d5032"
+    },
+    {
+      "name": "base-point-g-0x-prefixed-input",
+      "note": "Same EC point as nist-p256-base-point-g, but both input coordinates carry a leading 0x/0X to exercise prefix-stripping. Expected compressed/xy outputs are identical to the unprefixed base-point vector — the prefix must be stripped, not treated as data.",
+      "x": "0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+      "y": "0X4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "compressed": "036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+      "xy": "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"
+    }
+  ],
+  "invalidShape": [
+    {
+      "name": "x-coordinate-wrong-length",
+      "note": "x is 31 bytes (one byte short of the required 32). Both a curve-aware compressor and a plain hex-shape formatter must reject this.",
+      "x": "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2",
+      "y": "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "reason": "x coordinate is 31 bytes, must be exactly 32"
+    },
+    {
+      "name": "non-hex-coordinate",
+      "note": "x has correct length (64 hex chars) but its last character is 'g', not a valid hex digit. Both a curve-aware compressor and a plain hex-shape formatter must reject this.",
+      "x": "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c29g",
+      "y": "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "reason": "x contains a non-hexadecimal character"
+    }
+  ],
+  "invalidCurve": [
+    {
+      "name": "off-curve-point-1-2",
+      "note": "(x=1, y=2), zero-padded to 32 bytes each. Correct length and valid hex, but does NOT satisfy the P-256 curve equation y^2 = x^3 - 3x + b (mod p) — verified independently via Python: (2*2) % p != (1 + (-3) + b) % p. A slot built from an off-curve point can never produce a verifiable signature; the caller who registers it loses access to that authority slot permanently. Only a curve-aware compressor is expected to catch this — a plain hex-shape formatter (right length, right alphabet) has no way to know.",
+      "x": "0000000000000000000000000000000000000000000000000000000000000001",
+      "y": "0000000000000000000000000000000000000000000000000000000000000002",
+      "reason": "(1, 2) is not a point on the P-256 curve"
+    }
+  ]
+}

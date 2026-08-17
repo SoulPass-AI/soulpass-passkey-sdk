@@ -1,0 +1,258 @@
+{
+  "format": "keccak256(len(envelope) as u8 || envelope || len(domain) as u8 || domain || len(tag) as u8 || tag || payload_parts...)",
+  "envelope": "machine_wallet_signed_message_v1",
+  "vectors": [
+    {
+      "name": "execute_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_execute_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "f07cdb30848f41edd07d53be5bbabbc6ac3d6f92415ab0a1430f9f14bd62b329"
+    },
+    {
+      "name": "execute_ephemeral_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_execute_ephemeral_v2",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "caad01c96a14a1f26b0e0e0cc008780872e77849dffa5c8b32c61137f57099f4"
+    },
+    {
+      "name": "create_session_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_create_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "3333333333333333333333333333333333333333333333333333333333333333"],
+      "keccak256_hex": "2c45c6d425b5c09f86277c7aa22fe53e3fc05045645546c36d7f848bbe6dfa22"
+    },
+    {
+      "name": "close_wallet_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_close_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "369172bcd51ac1df74345a2a039ee3efe0dbba97a91f4dff3970c731535da9c7"
+    },
+    {
+      "name": "add_authority_pop_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_add_authority_pop_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "0d3a804e6b0e83e86a5a130784a2f3c0d251938f6da91f499bc6d11042ab5da0"
+    },
+    {
+      "name": "create_wallet_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_create_wallet_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "a1c3735af48950ae75f8e76a84ed2649df2ad284248775fcc65fb3e3ea0a0109"
+    },
+    {
+      "name": "advance_nonce_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_advance_nonce_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000"],
+      "keccak256_hex": "442cb2e11bc75787ee6f630a00e4b7df5b79f6e529b374baf8c3615c9bf642fb"
+    },
+    {
+      "name": "revoke_session_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_revoke_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
+      "keccak256_hex": "09d9b0ff2c67d562abe34537125aeb4732fdcac79f6a3e11a79a941cc9dc4e60"
+    },
+    {
+      "name": "owner_close_session_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_owner_close_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "3eb23c455e5195ee15299e91802499e6c34c90866cba805d679abfb6ce39113c"
+    },
+    {
+      "name": "add_authority_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_add_authority_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242", "02"],
+      "keccak256_hex": "39d113efaba77084927cc98f8bc2165a29ca5e439b58866d71169f6a3eee1ee4"
+    },
+    {
+      "name": "remove_authority_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_remove_authority_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242", "02"],
+      "keccak256_hex": "40a3bd95ac5210d48906012958154367c302acd31351642fe270c698287e25a1"
+    },
+    {
+      "name": "set_threshold_local",
+      "domain": "machine_wallet_local_v1",
+      "tag": "machine_wallet_set_threshold_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "1d37a9aace0bd4cdeb86878578ad1f3e332c60370e23f9ad6e04bd83bdc20dbe"
+    },
+    {
+      "name": "execute_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_execute_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "885f131f805d004a30e7168f65bd1fce346f5d3ca66005d7355b43a004b6ea5d"
+    },
+    {
+      "name": "execute_ephemeral_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_execute_ephemeral_v2",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "607194314483db951fc314a18b9bc682b43925aead6fc8dec93799062dfc4558"
+    },
+    {
+      "name": "create_session_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_create_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "3333333333333333333333333333333333333333333333333333333333333333"],
+      "keccak256_hex": "fc9507b9167833e8a05aa6fab85e267117c22ba33d4c1dbd481fa5fa542277fe"
+    },
+    {
+      "name": "close_wallet_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_close_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "feebc916b4cfcaadc7d37e53525f680fa4658c0dea40e28fdc23243992a25f4e"
+    },
+    {
+      "name": "add_authority_pop_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_add_authority_pop_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "492875ef4ebf6c3ac67e85cd47bf0e5b94c7aa779c5c3e9d7313e0cf6fe235d7"
+    },
+    {
+      "name": "create_wallet_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_create_wallet_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "f1f41e211ed8b3e7b9967d2b2e0e2fc70cffca8173b6109dd91144df551fff20"
+    },
+    {
+      "name": "advance_nonce_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_advance_nonce_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000"],
+      "keccak256_hex": "e91c3d1f1e95bdd793f88ed63d8e2be938f977bf60f6b88ade45a43a1909c5c5"
+    },
+    {
+      "name": "revoke_session_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_revoke_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
+      "keccak256_hex": "ee014c4ad37b5b4452f8ffdeb0002a0b478cae95fd3b17528d662301bf83edb2"
+    },
+    {
+      "name": "owner_close_session_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_owner_close_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "60580b98235c7bb6cfb765eb41599fa1f28633ce5b9ab57b0a42ed81b3115d15"
+    },
+    {
+      "name": "add_authority_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_add_authority_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242", "02"],
+      "keccak256_hex": "ab1f55442c2f250b4d0720d721824a57b22a44725730a779dbe39304fe06390a"
+    },
+    {
+      "name": "remove_authority_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_remove_authority_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242", "02"],
+      "keccak256_hex": "6a9cc322deb83e9c135764c450e09b36654e050b95690ae93e01f58589a729d2"
+    },
+    {
+      "name": "set_threshold_devnet",
+      "domain": "machine_wallet_devnet_v1",
+      "tag": "machine_wallet_set_threshold_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "45442d8ff5fcb207202df9ab40dd1b2a8dd7c98336970eaff4b6b41133db935c"
+    },
+    {
+      "name": "execute_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_execute_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "dc44f7b5c44109bb8121e1d4e2745d0894ec2fc5c7eb9e5d4a61089d9c63c33e"
+    },
+    {
+      "name": "execute_ephemeral_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_execute_ephemeral_v2",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "77e6fb9a5b3ae0d74045aacc97f305dca3acc96007f87c4cdee8d5baf921bbe6"
+    },
+    {
+      "name": "create_session_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_create_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "3333333333333333333333333333333333333333333333333333333333333333"],
+      "keccak256_hex": "4ba8fc28da5e6eee4c0cd895c9cd3f7e2607c84452ae48a24c1e8892438bbb05"
+    },
+    {
+      "name": "close_wallet_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_close_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "4a748d91fe4f5e5184faba3324bd8652e9eabb1288a4d103b80720801d786370"
+    },
+    {
+      "name": "add_authority_pop_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_add_authority_pop_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "94fe4a4d2fa0dc291cdf2afeead33d713653be3021478e9e5ce7d15001ab110f"
+    },
+    {
+      "name": "create_wallet_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_create_wallet_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "e146d8914b6363044753043cb877974c7d6927c721054099ca164371bd6cd632"
+    },
+    {
+      "name": "advance_nonce_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_advance_nonce_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000"],
+      "keccak256_hex": "eb5ffac9538344342d30456654b9c3f241d641d159debeee4e99dce6d83e8de2"
+    },
+    {
+      "name": "revoke_session_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_revoke_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
+      "keccak256_hex": "019ed2118daa2a9890969a0443c6b41b9c93a773b580fc064a48ff173eaea041"
+    },
+    {
+      "name": "owner_close_session_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_owner_close_session_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "93c155c8e2bdeae0442d0755e11d6797e91c4fab6ad59c2296126b71c15de46b"
+    },
+    {
+      "name": "add_authority_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_add_authority_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242", "02"],
+      "keccak256_hex": "3a3881878255fb7354969989d7adb039cbc711f32dbde3c8e9e42b8edb27f1c1"
+    },
+    {
+      "name": "remove_authority_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_remove_authority_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "6400000000000000", "0500000000000000", "c800000000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242", "02"],
+      "keccak256_hex": "ff25c46f9f28a8a9a79ac5cf1448cf1b039b34286835ec631653fe521e42ad62"
+    },
+    {
+      "name": "set_threshold_mainnet",
+      "domain": "machine_wallet_mainnet_v1",
+      "tag": "machine_wallet_set_threshold_v1",
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "272479f1fb5b3d2f7037dadea1f2fdccbf4b5f37472f300d843104f209be50c7"
+    }
+  ]
+}

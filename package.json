@@ -1,0 +1,98 @@
+{
+  "name": "@soulpass/passkey-sdk",
+  "version": "0.3.0",
+  "description": "Passkey wallet and stablecoin payments for web apps — arbitrary Web3 signing plus PaymentIntent checkout",
+  "license": "MIT",
+  "homepage": "https://soulpass.ai",
+  "keywords": [
+    "solana",
+    "stablecoin",
+    "payments",
+    "wallet",
+    "passkey",
+    "webauthn",
+    "smart-wallet"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js",
+      "require": "./dist/protocol.cjs"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js",
+      "require": "./dist/react.cjs"
+    },
+    "./payments": {
+      "types": "./dist/payments.d.ts",
+      "import": "./dist/payments.js",
+      "require": "./dist/payments.cjs"
+    },
+    "./payments-react": {
+      "types": "./dist/payments-react.d.ts",
+      "import": "./dist/payments-react.js",
+      "require": "./dist/payments-react.cjs"
+    },
+    "./solana-adapter": {
+      "types": "./dist/adapters/solana.d.ts",
+      "import": "./dist/adapters/solana.js",
+      "require": "./dist/adapters/solana.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "PAYMENTS.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "node scripts/check-fixtures.mjs && vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "check:fixtures": "node scripts/check-fixtures.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@solana/web3.js": "^1.90.0",
+    "react": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "@solana/web3.js": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@solana/wallet-adapter-base": "^0.9.23",
+    "@solana/web3.js": "^1.98.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "eslint": "^9.39.5",
+    "jsdom": "^29.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsup": "^8.0.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^3.0.0"
+  }
+}
