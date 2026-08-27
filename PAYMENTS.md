@@ -208,7 +208,7 @@ webhook and performs no Store lookup.
 - `solana_machine_wallet_transfer` uses the existing
   `/v1/wallet/solana/tx/submit` channel;
 - `evm_machine_account_batch` uses the existing EIP-7702 MachineAccount
-  `/v1/wallet/evm/spend/submit` channel and is not ERC-4337.
+  `/v1/wallet/evm/submit` channel and is not ERC-4337.
 
 ## Merchant multichain invariant
 

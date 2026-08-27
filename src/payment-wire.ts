@@ -131,7 +131,7 @@ export interface EvmMachineAccountExecution {
   chainId: string
   account: string
   calls: readonly EvmPaymentCall[]
-  submissionPath: '/v1/wallet/evm/spend/submit'
+  submissionPath: '/v1/wallet/evm/submit'
 }
 
 export type PaymentExecution =

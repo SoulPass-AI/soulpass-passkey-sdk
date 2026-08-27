@@ -159,7 +159,7 @@ function evmPrepared(): PreparedPayment {
       { target: EVM_OPTION.assetAddress, value: '0', data: '0xa9059cbb00' },
       { target: EVM_OPTION.assetAddress, value: '0', data: '0xa9059cbb01' },
     ],
-    submissionPath: '/v1/wallet/evm/spend/submit',
+    submissionPath: '/v1/wallet/evm/submit',
   }
   return {
     paymentIntent: paymentIntent({ settlement: EVM_OPTION }),
