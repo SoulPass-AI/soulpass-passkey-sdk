@@ -1,6 +1,6 @@
 import { PopupManager } from './popup-manager'
 import { PopupSession } from './popup-session'
-import { uint8ArrayToBase64 } from './encoding'
+import { base64ToUint8Array, uint8ArrayToBase64 } from './encoding'
 import { SoulPassError, isSoulPassErrorCode, soulPassError } from './errors'
 import { deriveApiUrl, normalizeWalletOrigin } from './matrix-http'
 import { SignChannelClient, generateChannelId, SIGN_CHANNEL_PARAM } from './sign-channel'
@@ -19,7 +19,7 @@ import type {
   VaultPda,
   StatePda,
 } from './types'
-import { DEFAULT_WALLET_URL } from './types'
+import { DEFAULT_WALLET_URL, validateStatePda, validateVaultPda } from './types'
 import type {
   PaymentAccount,
   PaymentAuthorizationSession,
@@ -155,8 +155,7 @@ export class SoulPassWallet {
       session.listen(() => id, (msg) => {
         if (msg.type === 'CONNECT_SUCCESS') {
           session.dispose()
-          this.handleConnectSuccess(msg.payload)
-          resolve(msg.payload)
+          resolve(this.handleConnectSuccess(msg.payload))
         } else if (msg.type === 'ERROR') {
           session.dispose()
           reject(popupError(msg.payload))
@@ -493,6 +492,15 @@ export class SoulPassWallet {
    * Silent: does NOT emit `connect` / `session`. Those fire on fresh popup
    * auth only; subscribers wired to re-init UI on `connect` should not run
    * again on a session restore.
+   *
+   * Persisted state is untrusted input (anything with script access to the
+   * page can rewrite sessionStorage), so it is validated before it can reach
+   * a popup: both addresses must be canonical 32-byte base58, `publicKey`
+   * must equal `walletAddress`, and the vault PDA must differ from the state
+   * PDA — throws `TypeError`/`RangeError` otherwise. The session is restored
+   * only while its absolute `expiresAt` is in the future; an expired or
+   * undatable session is dropped (addresses still restore) and
+   * {@link session} reads `null` — re-run `connect()` for a fresh token.
    */
   restoreSession(state: {
     publicKey: VaultPda
@@ -500,10 +508,21 @@ export class SoulPassWallet {
     accountAddress: StatePda
     session: SoulPassSession | null
   }): void {
+    if (state === null || typeof state !== 'object') {
+      throw new TypeError('restoreSession: state must be an object')
+    }
+    const walletAddress = validateVaultPda(state.walletAddress)
+    const accountAddress = validateStatePda(state.accountAddress)
+    if (state.publicKey !== walletAddress) {
+      throw new TypeError('restoreSession: publicKey must equal walletAddress (both carry the vault PDA)')
+    }
+    if ((walletAddress as string) === (accountAddress as string)) {
+      throw new TypeError('restoreSession: walletAddress (vault PDA) and accountAddress (state PDA) must differ')
+    }
     this._connected = true
-    this._walletAddress = state.walletAddress
-    this._accountAddress = state.accountAddress
-    this._session = state.session
+    this._walletAddress = walletAddress
+    this._accountAddress = accountAddress
+    this._session = liveSession(state.session)
   }
 
   // --- Events ---
@@ -524,16 +543,26 @@ export class SoulPassWallet {
     walletAddress: VaultPda
     accountAddress: StatePda
     session?: SoulPassSession
-  }): void {
+  }): {
+    publicKey: VaultPda
+    walletAddress: VaultPda
+    accountAddress: StatePda
+    session?: SoulPassSession
+  } {
+    // `expiresIn` is relative to now; stamp the absolute deadline once, here,
+    // so whatever the dApp persists can still be judged after a reload.
+    const session = payload.session ? stampExpiry(payload.session) : undefined
+    const result = { ...payload, ...(session ? { session } : {}) }
     this._connected = true
     this._walletAddress = payload.walletAddress
     this._accountAddress = payload.accountAddress
-    this._session = payload.session ?? null
+    this._session = session ?? null
     this.emit('connect', payload.walletAddress)
     // Separate event so session subscribers don't have to poll the getter
     // or race the 'connect' event. Fired only when the popup actually
     // forwarded a session — pre-session popup builds emit 'connect' alone.
-    if (payload.session) this.emit('session', payload.session)
+    if (session) this.emit('session', session)
+    return result
   }
 
   private assertConnected(): void {
@@ -751,9 +780,19 @@ export class SoulPassWallet {
 
 // --- Helpers ---
 
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return bytes
+function stampExpiry(session: SoulPassSession): SoulPassSession {
+  const { expiresIn } = session
+  if (typeof expiresIn !== 'number' || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+    return session
+  }
+  return { ...session, expiresAt: Date.now() + expiresIn * 1000 }
+}
+
+/** The session if it is well-formed and provably unexpired, else null. */
+function liveSession(session: SoulPassSession | null | undefined): SoulPassSession | null {
+  if (!session || typeof session !== 'object') return null
+  if (typeof session.accessToken !== 'string' || session.accessToken.length === 0) return null
+  const { expiresAt } = session
+  if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) return null
+  return expiresAt > Date.now() ? session : null
 }

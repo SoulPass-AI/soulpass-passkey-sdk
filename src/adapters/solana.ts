@@ -30,28 +30,10 @@ const MACHINE_VAULT_SEED_BYTES = new TextEncoder().encode(MACHINE_WALLET_VAULT_S
 
 // --- Trust-boundary validators ---
 //
-// Anywhere a base58 PDA enters the SDK from an untrusted source
-// (sessionStorage that might have been XSS'd, dApp user input), pass it
-// through one of these to assert it's a valid 32-byte Solana pubkey
-// before stamping the brand. `new PublicKey()` throws on bad bytes / wrong
-// length — we keep the exception verbatim so the stack trace points at
-// the ingest site, not at the downstream popup message that would
-// otherwise be the first to fail.
-//
-// These live in adapters/solana.ts (not types.ts) because they need
-// `PublicKey` at runtime; types.ts must stay peerDep-free.
-
-/** Validate `s` is a base58 Solana pubkey and stamp the {@link VaultPda} brand. */
-export function validateVaultPda(s: string): VaultPda {
-  new PublicKey(s)
-  return s as VaultPda
-}
-
-/** Validate `s` is a base58 Solana pubkey and stamp the {@link StatePda} brand. */
-export function validateStatePda(s: string): StatePda {
-  new PublicKey(s)
-  return s as StatePda
-}
+// Re-exported from core (they no longer need `PublicKey`): pass any base58
+// PDA that enters from an untrusted source through one of these before it
+// gets the brand.
+export { validateVaultPda, validateStatePda } from '../types'
 
 /** Derive the system-owned vault PDA from the wallet PDA and its cached bump.
  *
@@ -203,12 +185,11 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
    * tab session).
    *
    * Trust boundary: `state` may come from sessionStorage (XSS-tamperable)
-   * or dApp user input. The `new PublicKey()` calls below throw on
-   * malformed base58, halting the restore with a useful stack trace
-   * instead of leaking garbage into the next sign-popup message. The
-   * caller-friendly equivalent (`validateVaultPda` / `validateStatePda`)
-   * is exported so dApps can validate at their own persistence boundary
-   * too.
+   * or dApp user input. The core `SoulPassWallet.restoreSession` validates
+   * it (canonical base58, publicKey === walletAddress, vault ≠ state PDA,
+   * unexpired session) and throws before anything reaches a popup; the same
+   * `validateVaultPda` / `validateStatePda` are exported so dApps can
+   * validate at their own persistence boundary too.
    */
   restoreSession(state: {
     publicKey: VaultPda
@@ -216,17 +197,9 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
     accountAddress: StatePda
     session: SoulPassSession | null
   }): void {
-    if (state.publicKey !== state.walletAddress) {
-      // Wire-level invariant: both fields carry the same vault PDA.
-      // Divergence means the caller's `state` was synthesised or
-      // corrupted — fail before either value reaches the popup.
-      throw new Error(
-        `restoreSession: state.publicKey (${state.publicKey}) !== state.walletAddress (${state.walletAddress})`,
-      )
-    }
+    this.wallet.restoreSession(state)
     const vaultKey = new PublicKey(state.walletAddress)
     const acctKey = new PublicKey(state.accountAddress)
-    this.wallet.restoreSession(state)
     this._publicKey = vaultKey
     this._accountAddress = asStatePdaKey(acctKey)
   }

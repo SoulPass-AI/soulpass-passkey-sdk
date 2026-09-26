@@ -12,8 +12,10 @@ import { SoulPassWallet } from '../src/wallet'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-const VAULT = '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG'
-const STATE = '4rL8RczAsg3MHfJkMPXN5pzGYrmE1EWQP6pJqBrxVo'
+// Real 32-byte keys: restoreSession validates base58 at the trust boundary.
+const VAULT = '3BZpunigX3YomxFsjHegwLcng2s9EjGgWkJAZCqMJWcQ'
+const STATE = 'Hsj6NHEKypj4ReQyAhkTFpJhJFcLNJwhqV3fpPg32e8f'
+const LATER = () => Date.now() + 60_000
 const KEY = 'soulpass:connection:default'
 
 let container: HTMLDivElement
@@ -70,7 +72,7 @@ describe('SoulPassProvider', () => {
         publicKey: VAULT,
         walletAddress: VAULT,
         accountAddress: STATE,
-        session: { accessToken: 'jwt-abc' },
+        session: { accessToken: 'jwt-abc', expiresAt: LATER() },
       } as any)
       return {
         publicKey: VAULT,
@@ -102,7 +104,7 @@ describe('SoulPassProvider', () => {
         publicKey: VAULT,
         walletAddress: VAULT,
         accountAddress: STATE,
-        session: { accessToken: 'jwt-restored' },
+        session: { accessToken: 'jwt-restored', expiresAt: LATER() },
       }),
     )
     render(
@@ -115,6 +117,45 @@ describe('SoulPassProvider', () => {
     expect(latest!.session?.accessToken).toBe('jwt-restored')
     // The inner wallet must be primed too, so beginSign* passes assertConnected.
     expect(latest!.wallet.connected).toBe(true)
+  })
+
+  it.each([
+    ['expired', { accessToken: 'jwt-old', expiresAt: 1 }],
+    // Persisted by an older SDK: a relative lifetime cannot be judged after reload.
+    ['undatable', { accessToken: 'jwt-old', expiresIn: 3600 }],
+  ])('restores addresses but drops an %s session', (_label, session) => {
+    sessionStorage.setItem(
+      KEY,
+      JSON.stringify({ publicKey: VAULT, walletAddress: VAULT, accountAddress: STATE, session }),
+    )
+    render(
+      <SoulPassProvider>
+        <Probe />
+      </SoulPassProvider>,
+    )
+    expect(latest!.connected).toBe(true)
+    expect(latest!.session).toBeNull()
+    expect(latest!.wallet.session).toBeNull()
+    expect(JSON.parse(sessionStorage.getItem(KEY)!).session).toBeNull()
+  })
+
+  it('rejects persisted addresses that are not canonical base58 keys', () => {
+    sessionStorage.setItem(
+      KEY,
+      JSON.stringify({
+        publicKey: '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG',
+        walletAddress: '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG',
+        accountAddress: STATE,
+        session: null,
+      }),
+    )
+    render(
+      <SoulPassProvider>
+        <Probe />
+      </SoulPassProvider>,
+    )
+    expect(latest!.connected).toBe(false)
+    expect(sessionStorage.getItem(KEY)).toBeNull()
   })
 
   it('rejects tampered persisted state (publicKey ≠ walletAddress)', () => {

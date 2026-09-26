@@ -138,12 +138,23 @@ export function SoulPassProvider({
     const saved = readPersisted(key)
     if (!saved) return
     try {
+      // Validates addresses and drops an expired/undatable session.
       wallet.restoreSession(saved)
     } catch {
       sessionStorage.removeItem(key)
       return
     }
-    setConnection(saved)
+    // Read back what the wallet accepted — not `saved` — so a dropped
+    // session is not resurrected in React state or left in storage.
+    const restored: PersistedConnection = { ...saved, session: wallet.session }
+    if (restored.session === null && saved.session !== null) {
+      try {
+        sessionStorage.setItem(key, JSON.stringify(restored))
+      } catch {
+        // Storage blocked — the in-memory state is already correct.
+      }
+    }
+    setConnection(restored)
   }, [])
 
   // Keep React state honest if something disconnects the wallet directly.

@@ -17,7 +17,6 @@
 
 import type { Connection } from '@solana/web3.js'
 import type { StatePda, StatePdaKey } from './types'
-import { asStatePda } from './types'
 
 /**
  * v1 MachineWallet header layout (53 bytes, fixed):
@@ -253,7 +252,8 @@ export async function getWalletState(
 ): Promise<MachineWalletState> {
   const account = await connection.getAccountInfo(walletAddress, 'confirmed')
   if (!account || !account.data) {
-    throw new WalletNotDeployedError(asStatePda(walletAddress.toBase58()))
+    // A PublicKey is already a valid 32-byte key; only the brand is added.
+    throw new WalletNotDeployedError(walletAddress.toBase58() as StatePda)
   }
   return parseWalletState(new Uint8Array(account.data))
 }

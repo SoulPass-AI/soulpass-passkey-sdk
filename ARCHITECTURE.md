@@ -24,9 +24,11 @@ kinds of keys can be added to the same wallet as co-authorities.
 
 ## What this package exports
 
-Four entries since 0.3.0, layered by audience (the split keeps dApp
-autocomplete free of protocol internals and keeps `@solana/wallet-adapter-base`
-out of the main bundle):
+Six entries (`.`, `./react`, `./solana-adapter`, `./protocol`, `./payments`,
+`./payments-react` — see `tsup.config.ts`), layered by audience (the split
+keeps dApp autocomplete free of protocol internals and keeps
+`@solana/wallet-adapter-base` — an optional peer, never bundled — out of the
+main bundle):
 
 - **`.` (integration surface)** — `SoulPassWallet`: two-phase signing
   sessions (`begin*()` synchronously inside the click handler to keep
@@ -34,12 +36,14 @@ out of the main bundle):
   construction). Plus typed errors (`SoulPassError`), branded PDA types
   (`VaultPda` / `StatePda` + `*Key` variants — exists to make "vault PDA in
   a state-PDA slot" a compile error instead of a recurring `0x7d2
-  ConstraintSigner` bug), and in-app-browser detection.
+  ConstraintSigner` bug; stamp them with the checking `validateVaultPda` /
+  `validateStatePda`, the unchecked `asVaultPda` / `asStatePda` are
+  deprecated), and in-app-browser detection.
 - **`./react`** — `SoulPassProvider` + `useSoulPass()`: owns a wallet
   instance, persists the connection to sessionStorage, restores on reload.
   `react` is an optional peer dependency.
-- **`./solana-adapter`** — `SoulPassWalletAdapter` + PDA validators
-  (`validateVaultPda` / `validateStatePda` / `deriveVaultPDA`).
+- **`./solana-adapter`** — `SoulPassWalletAdapter` + `deriveVaultPDA`
+  (the PDA validators are re-exported here for compatibility).
   `signTransaction()` throws by design: SoulPass signs-and-submits in one
   step; dApps use `sendTransaction`.
 - **`./protocol`** — MachineWallet state (`parseWalletState`,
@@ -51,7 +55,7 @@ out of the main bundle):
   is an optional peer dependency, and `types.ts` stays peerDep-free at
   runtime.
 
-The fifth entry is **`./payments`**, an additive application layer above the
+**`./payments`** (with its hook, **`./payments-react`**) is an additive application layer above the
 chain-neutral payment wallet port. It owns canonical multichain PaymentIntent
 types, funded-route selection, payment-specific recovery semantics and the
 standard HTTP adapter. It deliberately never imports a transaction builder:

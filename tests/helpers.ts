@@ -33,8 +33,8 @@ export function setupPopupSpies(w: SoulPassWallet, isOpen?: () => boolean) {
   return { openSpy, sendSpy, getOnMessage: () => onMessage }
 }
 
-export const TEST_VAULT = '7xKXjJ8x9kN3mNpQrStuvWxY1zZ2aAbBcCdDeEfFgG'
-export const TEST_STATE = '4rL8RczAsg3MHfJkMPXN5pzGYrmE1EWQP6pJqBrxVo'
+export const TEST_VAULT = '3BZpunigX3YomxFsjHegwLcng2s9EjGgWkJAZCqMJWcQ'
+export const TEST_STATE = 'Hsj6NHEKypj4ReQyAhkTFpJhJFcLNJwhqV3fpPg32e8f'
 
 /** A wallet primed past connect() — beginSign* passes assertConnected. */
 export function connectedWallet(): SoulPassWallet {

@@ -6,6 +6,7 @@ import {
   setupPopupSpies,
   connectedWallet as connected,
   TEST_VAULT,
+  TEST_STATE,
 } from './helpers'
 
 describe('SoulPassWallet', () => {
@@ -601,6 +602,58 @@ describe('SoulPassWallet', () => {
     it('allows http on loopback for local popup development', () => {
       const w = new SoulPassWallet({ walletUrl: 'http://localhost:3000/' })
       expect(w['popup']['walletOrigin']).toBe('http://localhost:3000')
+    })
+  })
+
+  describe('restoreSession trust boundary', () => {
+    const base = { publicKey: TEST_VAULT, walletAddress: TEST_VAULT, accountAddress: TEST_STATE }
+
+    it('rejects malformed base58, a publicKey mismatch, and vault === state', () => {
+      const w = new SoulPassWallet()
+      expect(() => w.restoreSession({ ...base, walletAddress: 'not-base58!', session: null } as any)).toThrow()
+      expect(() => w.restoreSession({ ...base, accountAddress: 'abc', session: null } as any)).toThrow(RangeError)
+      expect(() => w.restoreSession({ ...base, publicKey: TEST_STATE, session: null } as any)).toThrow(TypeError)
+      expect(() => w.restoreSession({ ...base, accountAddress: TEST_VAULT, session: null } as any)).toThrow(TypeError)
+      expect(w.connected).toBe(false)
+    })
+
+    it('keeps an unexpired session and drops an expired or undatable one', () => {
+      const live = new SoulPassWallet()
+      live.restoreSession({ ...base, session: { accessToken: 't', expiresAt: Date.now() + 60_000 } } as any)
+      expect(live.session?.accessToken).toBe('t')
+
+      for (const session of [
+        { accessToken: 't', expiresAt: Date.now() - 1 },
+        { accessToken: 't', expiresIn: 3600 },
+        { accessToken: '', expiresAt: Date.now() + 60_000 },
+      ]) {
+        const w = new SoulPassWallet()
+        w.restoreSession({ ...base, session } as any)
+        expect(w.connected).toBe(true)
+        expect(w.session).toBeNull()
+      }
+    })
+
+    it('connect() stamps an absolute expiresAt from the relative expiresIn', async () => {
+      const w = new SoulPassWallet({ network: 'devnet' })
+      const { getOnMessage } = setupPopupSpies(w)
+      const before = Date.now()
+      const promise = w.connect()
+      getOnMessage()?.({ type: 'READY' })
+      const id = (vi.mocked(w['popup'].send).mock.calls[0][0] as { id: string }).id
+      getOnMessage()?.({
+        type: 'CONNECT_SUCCESS',
+        id,
+        payload: { ...base, session: { accessToken: 'jwt', expiresIn: 600 } },
+      })
+      const result = await promise
+      expect(result.session?.expiresAt).toBeGreaterThanOrEqual(before + 600_000)
+      expect(w.session).toEqual(result.session)
+
+      // What a dApp persists from connect() can be restored after a reload.
+      const reloaded = new SoulPassWallet()
+      reloaded.restoreSession({ ...result, session: result.session ?? null })
+      expect(reloaded.session?.accessToken).toBe('jwt')
     })
   })
 })

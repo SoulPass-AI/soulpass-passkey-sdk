@@ -130,6 +130,9 @@ describe('deriveEphemeralSigners', () => {
         count: MAX_EPHEMERAL_SIGNERS + 1,
       }),
     ).toThrow(RangeError)
+    // In range but not an integer: would otherwise loop ceil(count) times.
+    expect(() => deriveEphemeralSigners({ ...baseArgs, count: 1.5 })).toThrow(RangeError)
+    expect(() => deriveEphemeralSigners({ ...baseArgs, count: Number.NaN })).toThrow(RangeError)
   })
 
   it('rejects nonce outside u64 range', () => {

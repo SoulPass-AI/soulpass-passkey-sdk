@@ -29,6 +29,8 @@ export type { SoulPassErrorCode } from './errors'
 // ── Branded PDA types (vault vs state PDA — see ARCHITECTURE.md) ─────────
 export type { VaultPda, StatePda, VaultPdaKey, StatePdaKey } from './types'
 export {
+  validateVaultPda,
+  validateStatePda,
   asVaultPda,
   asStatePda,
   asVaultPdaKey,

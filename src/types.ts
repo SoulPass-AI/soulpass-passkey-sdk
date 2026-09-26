@@ -12,12 +12,11 @@
 // silently returns 0). Branding them as nominal types makes such misuse a
 // compile error at every API boundary.
 //
-// Use the `asVaultPda` / `asStatePda` factories at the bytes-in boundary
-// (sessionStorage rehydration, manual base58 input) to stamp the brand.
-// Use the `validateVaultPda` / `validateStatePda` helpers exported from
-// `./adapters/solana` when the bytes come from an untrusted source
-// (sessionStorage that might have been XSS'd, dApp user input) — those
-// throw on malformed base58 instead of leaking garbage downstream.
+// Stamp the brand with `validateVaultPda` / `validateStatePda`: they throw on
+// anything that is not a canonical 32-byte base58 key, so a corrupted or
+// XSS-doctored value (sessionStorage rehydration, dApp user input) fails at
+// the ingest site instead of leaking garbage downstream. The unchecked
+// `asVaultPda` / `asStatePda` casts are deprecated.
 
 // `import type` only — types.ts must stay peerDep-free at runtime so SDK
 // users who consume just the wire-format pieces don't pay the
@@ -25,6 +24,7 @@
 // compile-time refinements; their factory bodies have no PublicKey
 // runtime reference.
 import type { PublicKey } from '@solana/web3.js'
+import { base58ToPubkeyBytes } from './wire-format/base58'
 import type {
   PaymentAccount,
   PaymentExecution,
@@ -49,9 +49,37 @@ export type VaultPdaKey = PublicKey & { readonly [__vaultPdaKeyBrand]: true }
 /** {@link PublicKey} known to be a MachineWallet state PDA. */
 export type StatePdaKey = PublicKey & { readonly [__statePdaKeyBrand]: true }
 
-/** Cast a raw base58 to {@link VaultPda}. Caller asserts the value is a vault PDA. */
+function assertPubkeyString(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string') {
+    throw new TypeError(`${label} must be a base58 string, got ${typeof value}`)
+  }
+  // Throws RangeError on a bad alphabet or a length other than 32 bytes —
+  // exactly what `new PublicKey()` rejects, without the web3.js dependency.
+  base58ToPubkeyBytes(value)
+}
+
+/** Validate `s` is a canonical base58 Solana pubkey and stamp the {@link VaultPda} brand. */
+export function validateVaultPda(s: string): VaultPda {
+  assertPubkeyString(s, 'vault PDA')
+  return s as VaultPda
+}
+/** Validate `s` is a canonical base58 Solana pubkey and stamp the {@link StatePda} brand. */
+export function validateStatePda(s: string): StatePda {
+  assertPubkeyString(s, 'state PDA')
+  return s as StatePda
+}
+
+/**
+ * Unchecked cast of a raw base58 to {@link VaultPda}.
+ * @deprecated Use {@link validateVaultPda}, which rejects malformed input.
+ * Kept for source compatibility; removed in the next major.
+ */
 export function asVaultPda(addr: string): VaultPda { return addr as VaultPda }
-/** Cast a raw base58 to {@link StatePda}. Caller asserts the value is a state PDA. */
+/**
+ * Unchecked cast of a raw base58 to {@link StatePda}.
+ * @deprecated Use {@link validateStatePda}, which rejects malformed input.
+ * Kept for source compatibility; removed in the next major.
+ */
 export function asStatePda(addr: string): StatePda { return addr as StatePda }
 /** Cast a {@link PublicKey} to {@link VaultPdaKey}. Caller asserts the value is a vault PDA. */
 export function asVaultPdaKey(pk: PublicKey): VaultPdaKey { return pk as VaultPdaKey }
@@ -65,8 +93,6 @@ export type SoulPassNetwork = 'mainnet-beta' | 'devnet'
 export interface SoulPassWalletConfig {
   /** Solana network */
   network?: SoulPassNetwork
-  /** Custom Solana RPC endpoint */
-  endpoint?: string
   /** Override signing page base URL (default: https://soulpass.ai) */
   walletUrl?: string
   /**
@@ -130,8 +156,18 @@ export interface WalletState {
 export interface SoulPassSession {
   /** Matrix-user bearer JWT. Sent raw in `Authorization` header (no prefix). */
   accessToken: string
-  /** Seconds until expiry — dApp is expected to refresh by re-connecting. */
+  /**
+   * Seconds until expiry, relative to the moment the popup issued the token.
+   * Meaningless once persisted — use {@link expiresAt}.
+   */
   expiresIn?: number
+  /**
+   * Absolute expiry in ms since the epoch, stamped by the SDK when
+   * `connect()` receives the session (`Date.now() + expiresIn * 1000`).
+   * `restoreSession()` drops a session that is past it — or that lacks it,
+   * since a relative lifetime alone cannot be judged after a reload.
+   */
+  expiresAt?: number
 }
 
 // --- postMessage Protocol: SDK → Popup ---
@@ -354,8 +390,6 @@ export interface PopupSignSuccessMessage {
      * SIGN_MESSAGE: raw WebAuthn assertion signature (base64).
      */
     signature: string
-    /** Reserved; kept for adapter compatibility. Always undefined post-v0.1. */
-    signedTransaction?: string
     /** SIGN_MESSAGE only: base64 authenticatorData needed to verify the signature. */
     authenticatorData?: string
     /** SIGN_MESSAGE only: base64 clientDataJSON needed to verify the signature. */

@@ -97,7 +97,8 @@ export function deriveEphemeralSigners(
   input: DeriveEphemeralSignersInput,
 ): EphemeralSigner[] {
   const { walletAddress, walletNonce, count, programId } = input
-  if (count < 1 || count > MAX_EPHEMERAL_SIGNERS) {
+  // Integer check first: 1.5 passes the range test and would loop twice.
+  if (!Number.isInteger(count) || count < 1 || count > MAX_EPHEMERAL_SIGNERS) {
     throw new RangeError(
       `count must be in [1, ${MAX_EPHEMERAL_SIGNERS}] — got ${count}`,
     )

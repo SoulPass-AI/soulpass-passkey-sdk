@@ -195,7 +195,8 @@ new SoulPassWallet({
                                // omit it — your session is automatically
                                // scoped to your origin, zero registration.
   network: 'mainnet-beta',     // or 'devnet' (default: 'mainnet-beta')
-  // endpoint, walletUrl, apiUrl — advanced overrides, defaults are right
+  // walletUrl, apiUrl — advanced overrides, defaults are right (walletUrl
+  // must be https; http is accepted only on localhost)
 })
 ```
 
@@ -245,7 +246,12 @@ if (saved) wallet.restoreSession({ session: null, ...JSON.parse(saved) })
 ```
 
 `restoreSession` is silent (no events, no passkey tap). The stored value is
-addresses plus a short-lived JWT — never key material.
+addresses plus a short-lived JWT — never key material. Because storage is
+untrusted, `restoreSession` validates both addresses (canonical base58,
+vault ≠ state PDA) and throws on tampering; it restores the JWT only while the
+absolute `session.expiresAt` that `connect()` stamps is still in the future —
+otherwise `wallet.session` is `null` and you re-run `connect()` for a new
+token.
 
 ## Using with @solana/wallet-adapter
 
