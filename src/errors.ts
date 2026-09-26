@@ -24,7 +24,8 @@ const SOULPASS_ERROR_CODE_LIST = [
   'SEND_IN_FLIGHT', // batch: previous send() still pending (single-in-flight)
   'NOT_CONNECTED', // beginSign*() called before connect() / restoreSession()
   'TIMEOUT', // dual-channel sign: no signer responded within the deadline
-  'SIGN_FAILED', // the app-side signer reported a failure over the relay
+  'SIGN_FAILED', // the signer (popup or app) failed after the request reached it
+  'BAD_REQUEST', // the wallet rejected the request as malformed or out of order
   'IN_APP_BROWSER', // known-broken in-app browser (WeChat, Facebook, …)
   'NO_BROWSER', // no window — SSR or non-browser runtime
   'PROTOCOL_ERROR', // the wallet popup answered with a malformed payload
@@ -60,6 +61,12 @@ const SOULPASS_ERROR_CODES: ReadonlySet<string> = new Set<string>([
 ])
 
 const PAYMENT_ERROR_CODES: ReadonlySet<string> = new Set<string>(PAYMENT_ERROR_CODE_LIST)
+
+/** True for any code in the combined inventory — how untyped wire codes
+ * (popup ERROR payloads) are admitted into the typed contract. */
+export function isSoulPassErrorCode(code: unknown): code is SoulPassErrorCode | PaymentErrorCode {
+  return typeof code === 'string' && SOULPASS_ERROR_CODES.has(code)
+}
 
 /** True for codes in the payment inventory. Kept next to the lists so the two
  * can't drift. */

@@ -276,6 +276,22 @@ on it, so a generic `if (err.retryable) retry()` branch can never double-charge.
 Recovering from it means *retrieving* the same PaymentIntent
 (`retrieveDirectPayment` in direct mode), never creating a second one.
 
+The line between "nothing happened" and "status unknown" is the moment the
+wallet popup receives the execution request (`PAYMENT_EXECUTE`). Before it, a
+closed window is `POPUP_CLOSED` and a merchant cancel is `CANCELLED` — safe to
+treat as a decline. After it, the only clean decline is `USER_REJECTED`, which
+the wallet sends when the passkey prompt is dismissed, before any signature
+exists. Every other ending — the payer closes the window while the transaction
+is broadcasting, the popup crashes, the wallet reports `SIGN_FAILED` after a
+broadcast whose confirmation failed, a network error, or your own `cancel()` —
+surfaces as `PAYMENT_STATUS_UNKNOWN` with `paymentIntentId` set and no
+`transactionId` (the wallet never reported one). The recovery capability is
+kept, so `retrieveDirectPayment(err.paymentIntentId)` still works.
+
+The React hook follows the same line: `pay()` resolves `null` only when nothing
+was charged, and *rejects* with `PAYMENT_STATUS_UNKNOWN` (also setting
+`statusUnknown`) — a `null` there would look exactly like a decline.
+
 One checkout at a time: `pay()` and `beginPayment()` are single-flight per
 client instance. Starting a second checkout while one is still pending rejects
 immediately with `PAYMENT_IN_PROGRESS` instead of opening a second popup over
@@ -287,7 +303,8 @@ One `catch`, one guard. `pay()` and `confirm()` reject with a single error
 family: `PaymentError` extends `SoulPassError`, so `isSoulPassError(err)`
 narrows both payment failures and wallet-side ones — `USER_REJECTED`,
 `POPUP_CLOSED`, `POPUP_BLOCKED`, `IN_APP_BROWSER`, `CANCELLED`. Those wallet
-codes reach you unchanged rather than flattened into
+codes (raised before the wallet received the execution) reach you unchanged
+rather than flattened into
 `PAYMENT_AUTHORIZATION_FAILED`, which matters because a decline is not an
 error to show:
 

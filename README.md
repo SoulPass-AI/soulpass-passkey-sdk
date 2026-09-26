@@ -223,9 +223,12 @@ try {
 
 Full code list: `USER_REJECTED`, `PASSKEY_FAILED`, `NETWORK_ERROR`,
 `POPUP_CLOSED`, `POPUP_BLOCKED`, `CANCELLED`, `SESSION_USED`,
-`SEND_IN_FLIGHT`, `NOT_CONNECTED`, `TIMEOUT`, `SIGN_FAILED`,
+`SEND_IN_FLIGHT`, `NOT_CONNECTED`, `TIMEOUT`, `SIGN_FAILED`, `BAD_REQUEST`,
 `IN_APP_BROWSER`, `NO_BROWSER`, `PROTOCOL_ERROR`, `UNKNOWN` — see
-`src/errors.ts` for when each fires.
+`src/errors.ts` for when each fires. A popup code outside this list (a newer
+wallet build) arrives as `UNKNOWN`. Payment flows add their own codes; see
+PAYMENTS.md — in particular `PAYMENT_STATUS_UNKNOWN`, which is never a
+decline.
 
 ## Session persistence (vanilla)
 

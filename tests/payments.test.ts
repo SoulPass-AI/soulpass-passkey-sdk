@@ -4,10 +4,9 @@ import { bytesToHex } from '@noble/hashes/utils'
 import {
   SoulPassPayments,
   selectSettlementAccount,
-  __resetIdempotencySaltForTests,
 } from '../src/payments/client'
 import { PaymentError, isPaymentError } from '../src/payments/errors'
-import { SoulPassError, isSoulPassError } from '../src/errors'
+import { SoulPassError, isSoulPassError, isUserDeclined } from '../src/errors'
 import { HttpPaymentIntentProvider } from '../src/payments/http-provider'
 import type {
   EvmMachineAccountExecution,
@@ -21,7 +20,8 @@ import type {
 import { jsonResponse, TEST_VAULT } from './helpers'
 
 /**
- * Swap in a storage implementation and clear the module's salt cache.
+ * Swap in a storage implementation. Each SoulPassPayments reads the salt once,
+ * so a harness() built after this call observes the new storage.
  *
  * This defines the whole `localStorage` property rather than spying on
  * `Storage.prototype`: under this jsdom build `globalThis.localStorage` is a plain
@@ -42,11 +42,9 @@ function installLocalStorage(store: Record<string, string> | null): () => void {
   Object.defineProperty(globalThis, 'localStorage', {
     value: impl, configurable: true, writable: true,
   })
-  __resetIdempotencySaltForTests()
   return () => {
     if (original) Object.defineProperty(globalThis, 'localStorage', original)
     else delete (globalThis as { localStorage?: unknown }).localStorage
-    __resetIdempotencySaltForTests()
   }
 }
 
@@ -588,6 +586,32 @@ describe('SoulPassPayments', () => {
     await expect(h.payments.retrieveDirectPayment('pi_siya_123')).resolves.toMatchObject({
       status: 'processing',
       transactionId: SOLANA_SIGNATURE,
+    })
+  })
+
+  it('an execute that ended with status unknown keeps recovery and names the intent', async () => {
+    const h = harness()
+    // What the wallet reports when the popup closed after PAYMENT_EXECUTE: it
+    // cannot know the intent id, so the client must attach it.
+    h.execute.mockRejectedValue(new SoulPassError('PAYMENT_STATUS_UNKNOWN', 'window closed', {
+      cause: new SoulPassError('POPUP_CLOSED', 'user closed the payment window'),
+    }))
+    const err = await h.payments.pay({
+      amount: '10.50',
+      recipients: { solana: SOLANA_OPTION.recipient },
+    }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(PaymentError)
+    expect(err).toMatchObject({
+      code: 'PAYMENT_STATUS_UNKNOWN',
+      paymentIntentId: 'pi_siya_123',
+      retryable: false,
+    })
+    expect(isUserDeclined(err)).toBe(false)
+    expect(h.provider.complete).not.toHaveBeenCalled()
+
+    // The client secret survived, so the merchant can still learn the truth.
+    await expect(h.payments.retrieveDirectPayment('pi_siya_123')).resolves.toMatchObject({
+      id: 'pi_siya_123',
     })
   })
 

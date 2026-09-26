@@ -1,8 +1,8 @@
 import { PopupManager } from './popup-manager'
 import { PopupSession } from './popup-session'
 import { uint8ArrayToBase64 } from './encoding'
-import { SoulPassError, soulPassError } from './errors'
-import { deriveApiUrl } from './matrix-http'
+import { SoulPassError, isSoulPassErrorCode, soulPassError } from './errors'
+import { deriveApiUrl, normalizeWalletOrigin } from './matrix-http'
 import { SignChannelClient, generateChannelId, SIGN_CHANNEL_PARAM } from './sign-channel'
 import type {
   SoulPassWalletConfig,
@@ -46,10 +46,36 @@ type PendingReply<T> = {
  */
 const SIGN_CHANNEL_TIMEOUT_MS = 300_000
 
-/** Popup ERROR payloads already carry a SoulPassErrorCode subset — lift them
- * into the typed contract. */
+/** Lift a popup ERROR payload into the typed contract. A code outside the
+ * inventory (a newer popup build) becomes UNKNOWN rather than leaking an
+ * untyped string that `isSoulPassError` would no longer recognise; the
+ * original code stays readable in the message. */
 function popupError(payload: PopupErrorMessage['payload']): SoulPassError {
-  return soulPassError(payload.code, payload.message)
+  const code = isSoulPassErrorCode(payload.code) ? payload.code : 'UNKNOWN'
+  const detail = code === payload.code ? payload.message : `${String(payload.code)}: ${payload.message}`
+  return soulPassError(code, detail)
+}
+
+/**
+ * Classify how a payment ended once PAYMENT_EXECUTE reached the popup.
+ *
+ * The popup sends USER_REJECTED only when the passkey ceremony was declined —
+ * before any signature exists — so that alone is still a clean "nothing
+ * happened". Every other ending (window closed or crashed, SIGN_FAILED after a
+ * broadcast whose confirmation failed, the dApp cancelling, a network error)
+ * may have followed a submitted transaction. Reporting those as a decline or
+ * a definite failure is what lets a merchant re-charge a payer who already
+ * paid, so they become PAYMENT_STATUS_UNKNOWN: retrieve before concluding.
+ */
+function executionOutcome(error: Error): SoulPassError {
+  if (error instanceof SoulPassError && error.code === 'USER_REJECTED') return error
+  if (error instanceof SoulPassError && error.code === 'PAYMENT_STATUS_UNKNOWN') return error
+  return new SoulPassError(
+    'PAYMENT_STATUS_UNKNOWN',
+    'The wallet received the payment request but did not report a result ' +
+      `(${error.message}). Funds may have moved — retrieve the PaymentIntent before retrying.`,
+    { retryable: false, cause: error },
+  )
 }
 
 // Once per page load, not per instance — a dApp that constructs the wallet in
@@ -88,7 +114,7 @@ export class SoulPassWallet {
       network: config.network ?? 'mainnet-beta',
       ...config,
     }
-    const walletUrl = config.walletUrl ?? DEFAULT_WALLET_URL
+    const walletUrl = normalizeWalletOrigin(config.walletUrl ?? DEFAULT_WALLET_URL)
     this.popup = new PopupManager(walletUrl)
     this.signChannel = new SignChannelClient(config.apiUrl ?? deriveApiUrl(walletUrl))
     warnIfProductTypeMissing(config)
@@ -236,11 +262,16 @@ export class SoulPassWallet {
     // SDK is mid-prepare), when neither promise is pending. Kept so the next
     // leg rejects with the wallet's own code instead of a generic CANCELLED.
     let terminalError: Error | null = null
+    // True once PAYMENT_EXECUTE has been posted into a live popup. From that
+    // node on the wallet may already have signed and broadcast, so an ending
+    // the popup did not explicitly classify as a pre-signature decline says
+    // nothing about whether value moved — see `executionOutcome`.
+    let executeDelivered = false
 
     const rejectPending = (error: Error) => {
       discovery?.reject(error)
       discovery = null
-      execution?.reject(error)
+      execution?.reject(executeDelivered ? executionOutcome(error) : error)
       execution = null
     }
 
@@ -274,6 +305,7 @@ export class SoulPassWallet {
     const leg = <T>(
       message: SDKMessage,
       bind: (pending: PendingReply<T>) => void,
+      onPosted?: () => void,
     ): Promise<T> => {
       if (session.closed) {
         return Promise.reject(
@@ -282,7 +314,10 @@ export class SoulPassWallet {
       }
       return new Promise<T>((resolve, reject) => {
         bind({ resolve, reject })
+        // Throws (→ reject) when the window is already gone, in which case
+        // nothing was delivered and `onPosted` must not run.
         session.send(message)
+        onPosted?.()
       })
     }
 
@@ -327,6 +362,9 @@ export class SoulPassWallet {
           { type: 'PAYMENT_EXECUTE', id, payload: { execution: paymentExecution } },
           (pending) => {
             execution = pending
+          },
+          () => {
+            executeDelivered = true
           },
         )
       },

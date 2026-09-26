@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { SoulPassWallet } from '../src/wallet'
+import { SoulPassError, isSoulPassError } from '../src/errors'
 import {
   CHANNEL_ID_CHARS,
   setupPopupSpies,
@@ -370,6 +371,133 @@ describe('SoulPassWallet', () => {
       expect(closeSpy).not.toHaveBeenCalled()
     })
 
+    describe('what an ending means depends on whether PAYMENT_EXECUTE was delivered', () => {
+      const execution = {
+        kind: 'solana_machine_wallet_transfer' as const,
+        protocol: 'solana_machine_wallet_execute_v1' as const,
+        network: 'SOLANA',
+        account: TEST_VAULT,
+        mint: intent.settlementOptions[0].assetAddress,
+        recipient: TEST_VAULT,
+        amount: '1000000',
+        protocolFeeRecipient: null,
+        protocolFeeAmount: '0',
+        decimals: 6,
+        submissionPath: '/v1/wallet/solana/tx/submit' as const,
+      }
+
+      /** Drive a checkout up to "PAYMENT_EXECUTE posted into a live popup". */
+      async function executing(isOpen?: () => boolean) {
+        const w = connected()
+        const spies = setupPopupSpies(w, isOpen)
+        const session = w.beginPaymentAuthorization()
+        spies.getOnMessage()?.({ type: 'READY' })
+        const accounts = session.getPaymentAccounts(intent, 'pdt_test_token')
+        const id = (spies.sendSpy.mock.calls[0][0] as { id: string }).id
+        spies.getOnMessage()?.({
+          type: 'PAYMENT_ACCOUNTS',
+          id,
+          payload: { accounts: [{ settlementOptionId: 'pmo_sol', payerAddress: TEST_VAULT, availableAmount: '2000000' }] },
+        })
+        await accounts
+        const executed = session.execute(execution)
+        expect(spies.sendSpy).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'PAYMENT_EXECUTE' }))
+        return { session, executed, id, emit: (msg: unknown) => spies.getOnMessage()?.(msg) }
+      }
+
+      it('closing the window during discovery is still a plain POPUP_CLOSED', async () => {
+        vi.useFakeTimers()
+        try {
+          const w = connected()
+          let open = true
+          setupPopupSpies(w, () => open)
+          const session = w.beginPaymentAuthorization()
+          const accounts = session.getPaymentAccounts(intent, 'pdt_test_token')
+          const expectation = expect(accounts).rejects.toMatchObject({ code: 'POPUP_CLOSED' })
+          open = false
+          await vi.advanceTimersByTimeAsync(1000)
+          await expectation
+        } finally {
+          vi.useRealTimers()
+        }
+      })
+
+      it('closing the window after execute is PAYMENT_STATUS_UNKNOWN, not a decline', async () => {
+        vi.useFakeTimers()
+        try {
+          let open = true
+          const { executed } = await executing(() => open)
+          const expectation = expect(executed).rejects.toMatchObject({
+            code: 'PAYMENT_STATUS_UNKNOWN',
+            retryable: false,
+            cause: expect.objectContaining({ code: 'POPUP_CLOSED' }),
+          })
+          open = false
+          await vi.advanceTimersByTimeAsync(1000)
+          await expectation
+        } finally {
+          vi.useRealTimers()
+        }
+      })
+
+      it.each(['SIGN_FAILED', 'NETWORK_ERROR', 'BAD_REQUEST', 'PASSKEY_FAILED', 'UNKNOWN'])(
+        'a %s after execute is PAYMENT_STATUS_UNKNOWN',
+        async (code) => {
+          const { executed, id, emit } = await executing()
+          emit({ type: 'ERROR', id, payload: { code, message: 'broadcast then failed' } })
+          await expect(executed).rejects.toMatchObject({
+            code: 'PAYMENT_STATUS_UNKNOWN',
+            cause: expect.objectContaining({ code }),
+          })
+        },
+      )
+
+      it('an explicit USER_REJECTED after execute stays a decline (sent before any signature)', async () => {
+        const { executed, id, emit } = await executing()
+        emit({ type: 'ERROR', id, payload: { code: 'USER_REJECTED', message: 'declined' } })
+        await expect(executed).rejects.toMatchObject({ code: 'USER_REJECTED' })
+      })
+
+      it('a dApp cancel after execute cannot claim nothing happened', async () => {
+        const { session, executed } = await executing()
+        session.cancel('merchant navigated away')
+        await expect(executed).rejects.toMatchObject({ code: 'PAYMENT_STATUS_UNKNOWN' })
+      })
+
+      it('a PAYMENT_EXECUTE that never left (window already gone) is POPUP_CLOSED', async () => {
+        const w = connected()
+        const spies = setupPopupSpies(w)
+        const session = w.beginPaymentAuthorization()
+        spies.getOnMessage()?.({ type: 'READY' })
+        const accounts = session.getPaymentAccounts(intent, 'pdt_test_token')
+        const id = (spies.sendSpy.mock.calls[0][0] as { id: string }).id
+        spies.getOnMessage()?.({
+          type: 'PAYMENT_ACCOUNTS',
+          id,
+          payload: { accounts: [] },
+        })
+        await accounts
+        spies.sendSpy.mockImplementation(() => {
+          throw new SoulPassError('POPUP_CLOSED', 'Popup is not open')
+        })
+        await expect(session.execute(execution)).rejects.toMatchObject({ code: 'POPUP_CLOSED' })
+      })
+    })
+
+    it('maps a popup ERROR code outside the inventory to UNKNOWN', async () => {
+      const w = connected()
+      const { sendSpy, getOnMessage } = setupPopupSpies(w)
+      const session = w.beginPaymentAuthorization()
+      getOnMessage()?.({ type: 'READY' })
+      const accounts = session.getPaymentAccounts(intent, 'pdt_test_token')
+      const id = (sendSpy.mock.calls[0][0] as { id: string }).id
+      getOnMessage()?.({ type: 'ERROR', id, payload: { code: 'SOMETHING_NEW', message: 'x' } })
+      const err = await accounts.catch((e: unknown) => e)
+      expect(err).toMatchObject({ code: 'UNKNOWN' })
+      expect(isSoulPassError(err)).toBe(true)
+      expect((err as Error).message).toContain('SOMETHING_NEW')
+    })
+
     it('opens checkout while disconnected so /wallet/pay can authenticate in place', () => {
       const w = new SoulPassWallet({ network: 'devnet' })
       const { openSpy } = setupPopupSpies(w)
@@ -457,5 +585,22 @@ describe('SoulPassWallet', () => {
     const sentMessage = sendSpy.mock.calls[0][0] as { payload: Record<string, unknown> }
     expect(sentMessage.payload).toEqual({ network: 'devnet' })
     expect('productType' in sentMessage.payload).toBe(false)
+  })
+
+  describe('walletUrl normalization', () => {
+    it('reduces a URL with a trailing slash or path to its origin', () => {
+      const w = new SoulPassWallet({ walletUrl: 'https://soulpass.ai/some/path/' })
+      expect(w['popup']['walletOrigin']).toBe('https://soulpass.ai')
+    })
+
+    it('refuses plaintext wallet URLs outside localhost', () => {
+      expect(() => new SoulPassWallet({ walletUrl: 'http://soulpass.ai' })).toThrow(/HTTPS/)
+      expect(() => new SoulPassWallet({ walletUrl: 'not a url' })).toThrow(/valid URL/)
+    })
+
+    it('allows http on loopback for local popup development', () => {
+      const w = new SoulPassWallet({ walletUrl: 'http://localhost:3000/' })
+      expect(w['popup']['walletOrigin']).toBe('http://localhost:3000')
+    })
   })
 })

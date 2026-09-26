@@ -106,8 +106,13 @@ describe('useSoulPassPayments', () => {
     }))
     render(<Probe />)
 
+    // Rejects instead of resolving null: a null here is indistinguishable from
+    // a decline, and a merchant that re-enables "Pay" on null charges twice.
     await act(async () => {
-      await latest!.pay(INPUT)
+      await expect(latest!.pay(INPUT)).rejects.toMatchObject({
+        code: 'PAYMENT_STATUS_UNKNOWN',
+        paymentIntentId: 'pi_1',
+      })
     })
 
     expect(latest!.statusUnknown).toBe(true)
@@ -157,6 +162,13 @@ describe('useSoulPassPayments', () => {
   it('rebuilds the client when a config value actually changes', () => {
     render(<Probe config={{ walletUrl: 'https://soulpass.ai' }} />)
     render(<Probe config={{ walletUrl: 'https://test.soulpass.ai' }} />)
+
+    expect(createSoulPassPayments).toHaveBeenCalledTimes(2)
+  })
+
+  it('rebuilds the client when only the network changes', () => {
+    render(<Probe config={{ network: 'mainnet-beta' }} />)
+    render(<Probe config={{ network: 'devnet' }} />)
 
     expect(createSoulPassPayments).toHaveBeenCalledTimes(2)
   })

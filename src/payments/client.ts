@@ -62,6 +62,8 @@ export class SoulPassPayments {
    * PAYMENT_IN_PROGRESS is the honest version of that failure.
    */
   private sessionActive = false
+  /** Per-browser idempotency salt, read once per client. See readOrCreateIdempotencySalt. */
+  private salt: string | null = null
 
   constructor(config: SoulPassPaymentsConfig) {
     this.wallet = config.wallet
@@ -112,7 +114,7 @@ export class SoulPassPayments {
     try {
       created = await this.provider.createDirect({
         ...direct,
-        idempotencyKey: generateIdempotencyKey(direct.reference),
+        idempotencyKey: generateIdempotencyKey(() => this.idempotencySalt(), direct.reference),
       })
       assertPaymentIntent(created.paymentIntent)
       assertClientSecret(created.clientSecret)
@@ -141,6 +143,11 @@ export class SoulPassPayments {
       }
       throw err
     }
+  }
+
+  private idempotencySalt(): string {
+    this.salt ??= readOrCreateIdempotencySalt()
+    return this.salt
   }
 
   private rememberDirectSecret(
@@ -339,10 +346,22 @@ export class SoulPassPayments {
           }
         } catch (err) {
           settle()
-          // A wallet-side rejection already carries the code the caller needs
-          // (USER_REJECTED, POPUP_CLOSED, CANCELLED). Flattening it into
-          // PAYMENT_AUTHORIZATION_FAILED would destroy the one distinction
-          // that decides whether to show an error at all.
+          // The wallet reports PAYMENT_STATUS_UNKNOWN for any ending after the
+          // execution reached it other than a pre-signature decline. Attach
+          // the intent id here — the one thing recovery needs — and keep it
+          // non-retryable: value may have moved (pay() keeps the recovery
+          // capability for exactly this code).
+          if (isSoulPassError(err) && err.code === 'PAYMENT_STATUS_UNKNOWN') {
+            throw new PaymentError('PAYMENT_STATUS_UNKNOWN', err.message, {
+              paymentIntentId: prepared.paymentIntent.id,
+              retryable: false,
+              cause: err.cause ?? err,
+            })
+          }
+          // A pre-delivery wallet-side rejection already carries the code the
+          // caller needs (USER_REJECTED, POPUP_CLOSED, CANCELLED). Flattening
+          // it into PAYMENT_AUTHORIZATION_FAILED would destroy the one
+          // distinction that decides whether to show an error at all.
           if (isSoulPassError(err)) throw err
           throw new PaymentError(
             'PAYMENT_AUTHORIZATION_FAILED',
@@ -934,42 +953,36 @@ function assertDecimalAmount(value: string): string {
  */
 const DIRECT_IDEMPOTENCY_SALT_KEY = 'soulpass_direct_payment_salt_v1'
 const SALT_PATTERN = /^[0-9a-f]{32}$/
-let cachedSalt: string | null = null
 
-function originIdempotencySalt(): string {
-  if (cachedSalt) return cachedSalt
+/**
+ * Read this browser's salt, minting and persisting one on first use. Uncached:
+ * the caller (one SoulPassPayments instance) holds the result, so a storage
+ * failure still yields one stable salt for that client's lifetime — which is
+ * where double-clicks happen — and a new client re-reads storage.
+ */
+function readOrCreateIdempotencySalt(): string {
   try {
     const stored = globalThis.localStorage?.getItem(DIRECT_IDEMPOTENCY_SALT_KEY)
-    if (stored && SALT_PATTERN.test(stored)) {
-      cachedSalt = stored
-      return stored
-    }
+    if (stored && SALT_PATTERN.test(stored)) return stored
   } catch {
-    // Privacy mode / partitioned storage. The module-level cache below still
-    // deduplicates within this page, which is where double-clicks happen.
+    // Privacy mode / partitioned storage — fall through to a client-lifetime salt.
   }
   const fresh = bytesToHex(randomBytes(16))
-  cachedSalt = fresh
   try {
     globalThis.localStorage?.setItem(DIRECT_IDEMPOTENCY_SALT_KEY, fresh)
   } catch {
-    // Same as above: a page-lifetime salt is a weaker guarantee, not a broken one.
+    // Same as above: a client-lifetime salt is a weaker guarantee, not a broken one.
   }
   return fresh
 }
 
-function generateIdempotencyKey(reference?: string): string {
+function generateIdempotencyKey(salt: () => string, reference?: string): string {
   if (reference) {
     // NUL separator so ("ab", "c") and ("a", "bc") cannot collide.
-    const digest = sha256(new TextEncoder().encode(`${originIdempotencySalt()}\u0000${reference}`))
+    const digest = sha256(new TextEncoder().encode(`${salt()}\u0000${reference}`))
     return `sdk_ref_${bytesToHex(digest.slice(0, 20))}`
   }
   return `sdk_${bytesToHex(randomBytes(16))}`
-}
-
-/** Test seam: drop the cached salt so a suite can observe a fresh browser. */
-export function __resetIdempotencySaltForTests(): void {
-  cachedSalt = null
 }
 
 function isTerminal(status: PaymentIntent['status']): boolean {

@@ -22,8 +22,14 @@ export interface UseSoulPassPaymentsResult {
    * Start a checkout. Call directly in a click handler — never after an `await`,
    * or the browser drops the popup grant and the payment cannot open.
    *
-   * Resolves with the settled payment, or `null` when the payer declined. It does not
-   * reject for declines, so the common case needs no try/catch at all.
+   * Resolves with the settled payment, or `null` when nothing was charged — the payer
+   * declined, or the checkout failed before submission (see `error`). It does not
+   * reject for those, so the common case needs no try/catch at all.
+   *
+   * The one rejection is `PAYMENT_STATUS_UNKNOWN`: the wallet received the payment and
+   * funds may have moved. A `null` there would read exactly like "declined, let them
+   * click again" — the double-charge path — so it rejects (and also sets
+   * `statusUnknown`). Retrieve via `recover()`; never start a second payment.
    */
   pay: (input: DirectPaymentInput) => Promise<PaymentResult | null>
   /** True between the click and the settled payment. Drive the button's disabled state. */
@@ -69,6 +75,7 @@ export function useSoulPassPayments(
     // 依赖是字段而非 config 对象本身，见上方注释。
     [
       config.walletUrl,
+      config.network,
       config.apiUrl,
       config.paymentApiUrl,
       config.productType,
@@ -121,12 +128,13 @@ export function useSoulPassPayments(
           // error for "the payer changed their mind" is the most common
           // checkout bug, and the code list lives in errors.ts, not here.
           if (isUserDeclined(cause)) return null
+          setError(cause instanceof Error ? cause : new Error(String(cause)))
           if (isSoulPassError(cause) && cause.code === 'PAYMENT_STATUS_UNKNOWN') {
             setStatusUnknown(true)
             setUnknownPaymentIntentId(cause.paymentIntentId ?? null)
             unknownIntentRef.current = cause.paymentIntentId ?? null
+            throw cause
           }
-          setError(cause instanceof Error ? cause : new Error(String(cause)))
           return null
         })
         .finally(() => {

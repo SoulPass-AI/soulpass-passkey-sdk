@@ -173,6 +173,13 @@ export interface PaymentAuthorizationSession {
    * so third-party `PaymentWallet` implementations stay valid without it.
    */
   notifyPreparing?(settlementOptionId: string): void
+  /**
+   * Once the execution has reached the signer, every ending other than an
+   * explicit pre-signature `USER_REJECTED` (window closed, signer error,
+   * cancel, network failure) MUST reject with `PAYMENT_STATUS_UNKNOWN`: the
+   * transaction may already be on-chain, and the payments client keeps the
+   * recovery capability only for that code.
+   */
   execute(execution: PaymentExecution): Promise<{ transactionId: string }>
   cancel(reason?: string): void
 }

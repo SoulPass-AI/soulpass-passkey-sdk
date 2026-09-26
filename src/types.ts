@@ -379,7 +379,18 @@ export interface PopupErrorMessage {
   type: 'ERROR'
   id: string
   payload: {
-    code: 'USER_REJECTED' | 'PASSKEY_FAILED' | 'NETWORK_ERROR' | 'UNKNOWN'
+    /**
+     * Every code a popup build emits today. The SDK still maps anything
+     * outside the SoulPassError inventory to `UNKNOWN`, so a newer popup
+     * adding a code degrades instead of leaking an untyped string.
+     */
+    code:
+      | 'USER_REJECTED'
+      | 'PASSKEY_FAILED'
+      | 'NETWORK_ERROR'
+      | 'BAD_REQUEST'
+      | 'SIGN_FAILED'
+      | 'UNKNOWN'
     message: string
   }
 }

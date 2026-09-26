@@ -30,3 +30,28 @@ export function deriveApiUrl(walletUrl: string): string {
   if (envMatch) return `https://api-${envMatch[1]}.soulpass.ai/api`
   return `${url.origin}/api`
 }
+
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+/**
+ * Reduce a configured wallet URL to the exact origin the popup will report in
+ * `MessageEvent.origin`. A trailing slash or path would otherwise make every
+ * reply fail the origin check and be dropped silently; plain HTTP would put
+ * the whole signing channel on the wire in clear. HTTP is allowed only on
+ * loopback, for local popup development.
+ */
+export function normalizeWalletOrigin(walletUrl: string): string {
+  let url: URL
+  try {
+    url = new URL(walletUrl)
+  } catch {
+    throw new TypeError(`[SoulPass SDK] walletUrl is not a valid URL: ${walletUrl}`)
+  }
+  const loopback = LOOPBACK_HOSTS.has(url.hostname)
+  if (url.protocol !== 'https:' && !(loopback && url.protocol === 'http:')) {
+    throw new TypeError(
+      '[SoulPass SDK] walletUrl must use HTTPS (HTTP is allowed only on localhost).',
+    )
+  }
+  return url.origin
+}
