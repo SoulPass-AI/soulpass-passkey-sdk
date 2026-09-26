@@ -137,8 +137,11 @@ export interface DirectPaymentInput {
    * has still moved the funds. Deliveries are Ed25519-signed against the platform key
    * published at `/v1/payment-webhook-keys` — there is no secret to configure.
    *
-   * Must be hosted on the checkout page's own domain (or a subdomain). That is what
-   * stands in for a credential on an endpoint that takes none.
+   * Must be hosted on the checkout page's own domain (or a subdomain). That host is
+   * derived from a spoofable `Origin`, so it is not proof of ownership: a signed event
+   * may describe a payment someone else created against your URL. Before fulfilling,
+   * run `verifyPaymentWebhook` and then `assertPaymentWebhookMatchesOrder` (recipient,
+   * currency, amount and `reference` must match your order) — see PAYMENTS.md.
    */
   webhookUrl?: string
 }

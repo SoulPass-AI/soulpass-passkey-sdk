@@ -184,15 +184,62 @@ SoulPass-Key-Id:   pwk_1b7d…
 SoulPass-Signature: t=1760000000,ed25519=<hex>
 ```
 
-Verify `sha512/ed25519` over the exact bytes `"{t}.{rawBody}"` using the public key whose
-`keyId` matches, fetched once from `GET /v1/payment-webhook-keys`. Reject a timestamp
-outside your tolerance; the timestamp is inside the signed bytes, so it cannot be swapped.
+The signature is over the exact bytes `"{t}.{rawBody}"`, verified with the public key whose
+`keyId` matches, fetched from `GET /v1/payment-webhook-keys` (cache it; refetch on an
+unknown key id — both keys are published during a rotation). The timestamp is inside the
+signed bytes, so it cannot be swapped; reject one outside your tolerance.
 
-The URL must be on the checkout page's own host, or a subdomain of it. That constraint is
-what stands in for a credential on an endpoint that has none: since Origin is spoofable by
-a non-browser, restricting the destination to a domain the caller demonstrably serves is
-what stops this from being a signed-request reflector — or a way to read another merchant's
-payment events. The URL is frozen into that one PaymentIntent and registers nothing.
+**A valid signature is not permission to ship.** Direct create takes no credential, and
+the webhook-domain rule is checked against the request `Origin`, which any non-browser
+client can forge. So an attacker can create a direct intent naming *your* `webhookUrl`,
+*your* order id as `reference`, *their own* address as recipient and a one-cent price,
+pay themselves, and SoulPass will deliver a genuinely signed `payment_intent.succeeded`
+to you. The signature proves the payment described in the event happened on-chain — not
+that it is a payment of your order to you. Only your server knows the order, so your
+server must check, every time, before fulfilling:
+
+- `type` is `payment_intent.succeeded` (and `status` is `succeeded`);
+- `merchant_order_id` equals the `reference` of an order you created (so always pass
+  `reference` when you rely on the webhook — without one the server stores an opaque key
+  you cannot match);
+- `amount.currency` and `amount.value` / `amount.decimals` equal that order's price;
+- `transaction.recipient` is one of **your** receiving addresses;
+- optionally, `(transaction.chain_id, transaction.asset_address)` is a pair you accept.
+
+The payments entry ships both halves (Node ≥ 20 or any runtime with WebCrypto Ed25519):
+
+```ts
+import {
+  verifyPaymentWebhook,
+  assertPaymentWebhookMatchesOrder,
+} from '@soulpass/passkey-sdk/payments'
+
+export async function POST(req: Request) {
+  const rawBody = await req.text() // the exact bytes — never re-serialize
+  const event = await verifyPaymentWebhook({ rawBody, headers: req.headers, keys })
+  const order = await db.orders.get(event.data.object.merchant_order_id)
+  if (!order) return new Response(null, { status: 404 })
+  assertPaymentWebhookMatchesOrder(event, {
+    reference: order.id,
+    amount: order.price,          // "10.50" — the same string you passed to pay()
+    currency: 'USDC',
+    recipients: [MERCHANT_SOLANA, MERCHANT_EVM],
+  })
+  await fulfil(order)             // idempotently, keyed by SoulPass-Event-Id / order
+  return new Response(null, { status: 204 })
+}
+```
+
+Both throw `PaymentWebhookError` (with a machine-readable `reason`) on any mismatch;
+respond non-2xx and do not fulfil. The same checks apply to anything you learn through
+`retrievePayment` / `retrieveDirectPayment`: compare the settled option's recipient and
+amount with your order.
+
+The URL must be on the checkout page's own host, or a subdomain of it. Because that host
+comes from a spoofable `Origin`, the rule only stops casual misuse (pointing SoulPass at
+an arbitrary third-party URL from a real browser); it is **not** proof that the caller
+controls the domain, and it is not what makes an event safe to act on — the checks above
+are. The URL is frozen into that one PaymentIntent and registers nothing.
 
 ### Authenticated Store mode (optional)
 

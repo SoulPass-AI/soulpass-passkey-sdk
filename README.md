@@ -91,8 +91,12 @@ const { pay, paying, error } = useSoulPassPayments()
 **The webhook is the fulfilment source of truth.** `pay()` resolving is a browser event:
 it fires only after canonical on-chain verification, but it fires in the payer's browser,
 which your server must not trust and which may already be closed. Ship goods from your
-webhook endpoint after verifying the Ed25519 signature; treat the resolved promise as UI
-state. Verification needs no stored secret — fetch the platform public key once from
+webhook endpoint after verifying the Ed25519 signature **and** checking that the event is
+your order — reference, currency, amount and a recipient address you own
+(`verifyPaymentWebhook` + `assertPaymentWebhookMatchesOrder` from
+`@soulpass/passkey-sdk/payments`). A signature alone is not enough: anyone can create a
+direct payment that names your webhook URL. Treat the resolved promise as UI state.
+Verification needs no stored secret — fetch the platform public key once from
 `/v1/payment-webhook-keys`. See
 [PAYMENTS.md](./PAYMENTS.md#getting-the-result-on-your-server-direct-mode).
 

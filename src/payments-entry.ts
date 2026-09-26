@@ -38,3 +38,17 @@ export type {
   SolanaMachineWalletExecution,
   SoulPassPaymentsConfig,
 } from './payments/types'
+// Server-side: authenticate a direct-mode webhook, then check it is YOUR order.
+export {
+  verifyPaymentWebhook,
+  assertPaymentWebhookMatchesOrder,
+  PaymentWebhookError,
+} from './payments/webhook'
+export type {
+  ExpectedPaymentOrder,
+  PaymentWebhookEvent,
+  PaymentWebhookFailureReason,
+  PaymentWebhookKey,
+  PaymentWebhookPaymentIntent,
+  VerifyPaymentWebhookInput,
+} from './payments/webhook'
