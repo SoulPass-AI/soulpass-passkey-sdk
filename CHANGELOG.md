@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.4.0 — 未发布（2026-09-26 审计整改）
+
+0.x 阶段按 semver 惯例以 minor 承载破坏性变更。下列 **Breaking** 条目需要消费方
+（soulpass-ai / tens-gg / slabz-io 的 vendor 副本）随同步一起检查。
+
+### Breaking
+
+- **支付：PAYMENT_EXECUTE 送达后的结局重新分类（F1）。** 一旦执行请求投递进
+  活的钱包窗口，除签名前的 `USER_REJECTED` 外，关窗/崩溃/`SIGN_FAILED`/
+  `BAD_REQUEST`/`NETWORK_ERROR`/商户 `cancel()` 一律以 `PAYMENT_STATUS_UNKNOWN`
+  拒绝（带 `paymentIntentId`、`retryable: false`，原错误在 `cause`），`pay()`
+  保留恢复凭证。此前这些会以 `POPUP_CLOSED` 等被当成「用户拒绝」，商户可能
+  二次收款。discover 阶段关窗仍是 `POPUP_CLOSED`。
+- **`useSoulPassPayments().pay()` 对 `PAYMENT_STATUS_UNKNOWN` 改为 reject**
+  （仍同时设置 `statusUnknown`/`error`）。此前 resolve `null`，与「用户拒绝」
+  无法区分。
+- **`isAllowedWebAuthnOrigin(origin, deployment = 'mainnet')`（F4）** 由
+  `*.soulpass.ai` 子域规则改为按 deployment 的精确白名单：mainnet/local 仅
+  `https://soulpass.ai`，devnet 另加 `https://test.soulpass.ai`，与链上
+  machine-wallet `ALLOWED_ORIGIN_HOSTS`、machine-account 1.1.0 一致。新增
+  `allowedWebAuthnOrigins`、`PRODUCTION_WEBAUTHN_ORIGIN`、`TEST_WEBAUTHN_ORIGIN`。
+- **`walletUrl` 规范化为 origin 并强制 HTTPS（F11）**；HTTP 仅限 localhost /
+  127.0.0.1 / [::1]。非法值在构造 `SoulPassWallet` / `createSoulPassPayments`
+  时抛 `TypeError`。
+- **`restoreSession` 校验持久化状态（F6/F13）**：地址须为规范 32 字节 base58、
+  `publicKey === walletAddress`、vault ≠ state PDA，否则抛错；session 仅在
+  `expiresAt`（`connect()` 由 `expiresIn` 盖章的绝对毫秒时间）未过时恢复，
+  过期或只有相对 `expiresIn` 的旧记录会被丢弃（`wallet.session === null`，
+  地址照常恢复）。
+- **删除**从未读取的 `SoulPassWalletConfig.endpoint`，以及恒为 `undefined` 的
+  `PopupSignSuccessMessage.payload.signedTransaction`。
+- **peer 依赖**：`@solana/web3.js` 收窄为 `>=1.95.8 <2`（排除被投毒的
+  1.95.6/1.95.7）；`@solana/wallet-adapter-base` 改为 optional peer，不再打进
+  `dist/adapters/solana.*`——使用 `./solana-adapter` 的项目需自行安装它。
+
+### Added
+
+- `verifyPaymentWebhook` / `assertPaymentWebhookMatchesOrder` /
+  `PaymentWebhookError`（`./payments`）：direct 模式 webhook 验签 + 订单核对
+  （F2）。签名只证明链上发生了该笔支付；必须核对 reference、币种、金额、
+  收款地址。
+- `validateVaultPda` / `validateStatePda` 进入主入口（纯 base58 校验，不再
+  依赖 web3.js）；`./solana-adapter` 继续 re-export。
+- 错误码 `BAD_REQUEST`；`PopupErrorMessage.code` 补 `BAD_REQUEST`/`SIGN_FAILED`；
+  清单外的 popup 码归一为 `UNKNOWN`（F10）。
+- `SoulPassSession.expiresAt`。
+
+### Deprecated
+
+- `asVaultPda` / `asStatePda`（无校验 cast）→ 用 `validateVaultPda` /
+  `validateStatePda`。soulpass-ai、tens-gg 仍在使用，下个 major 删除。
+
+### Fixed
+
+- `deriveEphemeralSigners` 拒绝非整数 `count`。
+- `useSoulPassPayments` 的 client memo 依赖补上 `network`。
+- 文档：`signed-message.ts` 中「deployment domain 防测试站签名上主网」的说法
+  更正为「只防跨 deployment 重放」；ARCHITECTURE 入口数量更正为 6 个。
+
+### Internal
+
+- 幂等盐缓存从模块级移到 `SoulPassPayments` 实例，删除生产模块中的
+  `__resetIdempotencySaltForTests`。
+- `base64ToUint8Array` 移入 `encoding.ts`。
+
+### 此前未记录
+
+- `9ca01b9`：支付 intent 的 EVM `submissionPath` 统一为 `/v1/wallet/evm/submit`。
+
 ## 0.3.0 — 2026-08-17
 
 首个公开发布版本。0.3.0 在开发期内分两批落地，此处合并为一条发布记录：
