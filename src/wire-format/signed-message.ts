@@ -28,9 +28,15 @@ import { concatBytes, requireByte } from './_bytes';
  * Which MachineWallet deployment a signature is scoped to.
  *
  * The deployment domain is part of the signed preimage, so a signature made for
- * one deployment is not valid on any other. This is what stops a signature
- * harvested from a devnet build — where the test frontend is an accepted
- * WebAuthn origin — from authorizing the same operation on mainnet.
+ * one deployment is not valid on any other: an assertion produced for a devnet
+ * operation — where the test frontend is an accepted WebAuthn origin — cannot
+ * be replayed as a mainnet operation.
+ *
+ * What it does NOT do is constrain who can *compute* a mainnet challenge. The
+ * domain is public, so any page able to obtain a `soulpass.ai` assertion can
+ * ask for one over a mainnet preimage. The barrier against that is the
+ * deployment's exact WebAuthn origin allowlist (mainnet accepts only
+ * `https://soulpass.ai`; see `webauthn.ts`), not this domain.
  *
  * Getting it wrong is not a forgery risk: the chain hashes under its own
  * compiled-in domain and simply rejects the signature.

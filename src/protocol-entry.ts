@@ -98,6 +98,9 @@ export { buildSecp256r1PrecompileIxData } from './wire-format/secp256r1'
 export {
   SOULPASS_RP_ID,
   MAX_CLIENT_DATA_JSON_SIZE,
+  PRODUCTION_WEBAUTHN_ORIGIN,
+  TEST_WEBAUTHN_ORIGIN,
+  allowedWebAuthnOrigins,
   isAllowedWebAuthnOrigin,
 } from './wire-format/webauthn'
 export { MESSAGE_DOMAIN, domainSeparate } from './wire-format/message-domain'
