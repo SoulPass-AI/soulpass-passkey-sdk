@@ -5,6 +5,8 @@
  * follows, instead of two modules holding drifting string copies.
  */
 
+import { DEFAULT_WALLET_URL } from './types'
+
 /**
  * Matrix HTTP Response Standard v1 opt-in (matrix-backend
  * `docs/specs/http-response-standard-v1.md`).
@@ -54,4 +56,15 @@ export function normalizeWalletOrigin(walletUrl: string): string {
     )
   }
   return url.origin
+}
+
+/**
+ * The two endpoints every entry point derives from wallet config — one place,
+ * so the popup channel and the HTTP legs can't end up on different hosts.
+ */
+export function resolveWalletEndpoints(
+  config: { walletUrl?: string; apiUrl?: string },
+): { walletOrigin: string; apiUrl: string } {
+  const walletOrigin = normalizeWalletOrigin(config.walletUrl ?? DEFAULT_WALLET_URL)
+  return { walletOrigin, apiUrl: config.apiUrl ?? deriveApiUrl(walletOrigin) }
 }

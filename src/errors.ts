@@ -120,10 +120,7 @@ export class SoulPassError extends Error {
  */
 export function isSoulPassError(err: unknown): err is SoulPassError {
   if (err instanceof SoulPassError) return true
-  return (
-    err instanceof Error &&
-    SOULPASS_ERROR_CODES.has((err as { code?: unknown }).code as string)
-  )
+  return err instanceof Error && isSoulPassErrorCode((err as { code?: unknown }).code)
 }
 
 /** Builds the historical `"CODE: detail"` message shape pre-0.3 string-matchers

@@ -81,27 +81,20 @@ export interface SoulPassProviderProps {
 function readPersisted(key: string): PersistedConnection | null {
   try {
     const raw = sessionStorage.getItem(key)
-    if (!raw) return null
-    const v = JSON.parse(raw) as Partial<PersistedConnection>
-    if (
-      typeof v.publicKey !== 'string' ||
-      typeof v.walletAddress !== 'string' ||
-      typeof v.accountAddress !== 'string' ||
-      v.publicKey !== v.walletAddress
-    ) {
-      return null
-    }
-    return {
-      publicKey: v.publicKey as VaultPda,
-      walletAddress: v.walletAddress as VaultPda,
-      accountAddress: v.accountAddress as StatePda,
-      session:
-        v.session && typeof v.session.accessToken === 'string' ? v.session : null,
-    }
+    // Shape and expiry are checked once, by wallet.restoreSession.
+    return raw ? (JSON.parse(raw) as PersistedConnection) : null
   } catch {
     // Corrupt JSON / storage blocked — treat as signed-out, never throw
     // during render bootstrap.
     return null
+  }
+}
+
+function writePersisted(key: string, conn: PersistedConnection): void {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(conn))
+  } catch {
+    // Storage full / blocked — the in-memory state is still correct for this page view.
   }
 }
 
@@ -146,14 +139,13 @@ export function SoulPassProvider({
     }
     // Read back what the wallet accepted — not `saved` — so a dropped
     // session is not resurrected in React state or left in storage.
-    const restored: PersistedConnection = { ...saved, session: wallet.session }
-    if (restored.session === null && saved.session !== null) {
-      try {
-        sessionStorage.setItem(key, JSON.stringify(restored))
-      } catch {
-        // Storage blocked — the in-memory state is already correct.
-      }
+    const restored: PersistedConnection = {
+      publicKey: wallet.walletAddress!,
+      walletAddress: wallet.walletAddress!,
+      accountAddress: wallet.accountAddress!,
+      session: wallet.session,
     }
+    if (restored.session === null && saved.session !== null) writePersisted(key, restored)
     setConnection(restored)
   }, [])
 
@@ -179,13 +171,7 @@ export function SoulPassProvider({
         session: result.session ?? null,
       }
       setConnection(next)
-      if (persist && typeof window !== 'undefined') {
-        try {
-          sessionStorage.setItem(key, JSON.stringify(next))
-        } catch {
-          // Storage full / blocked — connection still works for this page view.
-        }
-      }
+      if (persist && typeof window !== 'undefined') writePersisted(key, next)
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)))
       throw err

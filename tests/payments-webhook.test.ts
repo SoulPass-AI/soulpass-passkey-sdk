@@ -85,6 +85,17 @@ describe('assertPaymentWebhookMatchesOrder', () => {
       .toThrow(expect.objectContaining({ reason: 'amount_mismatch' }))
   })
 
+  it('never accepts a zero expected amount', () => {
+    expect(() => assertPaymentWebhookMatchesOrder(event({ value: '0' }), { ...ORDER, amount: '0' }))
+      .toThrow(expect.objectContaining({ reason: 'amount_mismatch' }))
+  })
+
+  it('fails closed with malformed_body on a hand-parsed event missing fields', () => {
+    const broken = { ...event(), data: { object: { id: 'pi_1', status: 'succeeded' } } }
+    expect(() => assertPaymentWebhookMatchesOrder(broken as unknown as PaymentWebhookEvent, ORDER))
+      .toThrow(expect.objectContaining({ reason: 'malformed_body' }))
+  })
+
   it('enforces an asset allowlist when given', () => {
     const assets = [{ chainId: 'mainnet', assetAddress: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' }]
     expect(() => assertPaymentWebhookMatchesOrder(event(), { ...ORDER, assets })).not.toThrow()

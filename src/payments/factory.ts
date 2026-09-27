@@ -1,6 +1,5 @@
 import { SoulPassWallet } from '../wallet'
-import { deriveApiUrl, normalizeWalletOrigin } from '../matrix-http'
-import { DEFAULT_WALLET_URL } from '../types'
+import { resolveWalletEndpoints } from '../matrix-http'
 import type { SoulPassWalletConfig } from '../types'
 import { SoulPassPayments } from './client'
 import { HttpPaymentIntentProvider, paymentApiBaseFromRoot } from './http-provider'
@@ -21,12 +20,11 @@ export interface CreateSoulPassPaymentsConfig extends SoulPassWalletConfig {
 export function createSoulPassPayments(
   config: CreateSoulPassPaymentsConfig = {},
 ): SoulPassPayments {
-  const walletUrl = normalizeWalletOrigin(config.walletUrl ?? DEFAULT_WALLET_URL)
-  const apiRoot = config.apiUrl ?? deriveApiUrl(walletUrl)
+  const { apiUrl } = resolveWalletEndpoints(config)
   return new SoulPassPayments({
     wallet: new SoulPassWallet(config),
     provider: new HttpPaymentIntentProvider({
-      baseUrl: config.paymentApiUrl ?? paymentApiBaseFromRoot(apiRoot),
+      baseUrl: config.paymentApiUrl ?? paymentApiBaseFromRoot(apiUrl),
     }),
     preferredNetworks: config.preferredNetworks,
     confirmationTimeoutMs: config.confirmationTimeoutMs,

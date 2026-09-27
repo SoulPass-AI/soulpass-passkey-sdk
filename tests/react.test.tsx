@@ -174,6 +174,18 @@ describe('SoulPassProvider', () => {
       </SoulPassProvider>,
     )
     expect(latest!.connected).toBe(false)
+    expect(sessionStorage.getItem(KEY)).toBeNull()
+  })
+
+  it('clears persisted state that is valid JSON but not a connection', () => {
+    sessionStorage.setItem(KEY, JSON.stringify({ walletAddress: 42 }))
+    render(
+      <SoulPassProvider>
+        <Probe />
+      </SoulPassProvider>,
+    )
+    expect(latest!.connected).toBe(false)
+    expect(sessionStorage.getItem(KEY)).toBeNull()
   })
 
   it('disconnect() clears state and storage', async () => {

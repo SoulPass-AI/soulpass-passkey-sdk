@@ -20,6 +20,8 @@
  * Runs on any runtime with WebCrypto Ed25519 (Node ≥ 20, Deno, Bun, Workers).
  */
 
+import { concatBytes, hexToBytes as nobleHexToBytes } from '@noble/hashes/utils'
+
 /** One published key from `GET /v1/payment-webhook-keys` (`data.keys[]`). */
 export interface PaymentWebhookKey {
   /** Matches the `SoulPass-Key-Id` delivery header. */
@@ -145,13 +147,9 @@ export async function verifyPaymentWebhook(
     throw new PaymentWebhookError('unknown_key', `Published key ${keyId} is not 32 hex-encoded bytes.`)
   }
 
-  const body = typeof input.rawBody === 'string'
-    ? new TextEncoder().encode(input.rawBody)
-    : input.rawBody
-  const prefix = new TextEncoder().encode(`${timestamp}.`)
-  const message = new Uint8Array(prefix.length + body.length)
-  message.set(prefix, 0)
-  message.set(body, prefix.length)
+  const encoder = new TextEncoder()
+  const body = typeof input.rawBody === 'string' ? encoder.encode(input.rawBody) : input.rawBody
+  const message = concatBytes(encoder.encode(`${timestamp}.`), body)
 
   if (!(await ed25519Verify(publicKey, signature, message))) {
     throw new PaymentWebhookError('bad_signature', 'Webhook signature does not verify.')
@@ -159,7 +157,7 @@ export async function verifyPaymentWebhook(
 
   let event: unknown
   try {
-    event = JSON.parse(new TextDecoder().decode(body))
+    event = JSON.parse(typeof input.rawBody === 'string' ? input.rawBody : new TextDecoder().decode(body))
   } catch {
     throw new PaymentWebhookError('malformed_body', 'Webhook body is not JSON.')
   }
@@ -195,6 +193,11 @@ export function assertPaymentWebhookMatchesOrder(
   event: PaymentWebhookEvent,
   expected: ExpectedPaymentOrder,
 ): void {
+  // Public gate: callers may hand in an event they parsed themselves, so fail
+  // closed with our own error rather than a TypeError halfway through.
+  if (!isEventShape(event)) {
+    throw new PaymentWebhookError('malformed_body', 'Webhook body is not a payment_intent event.')
+  }
   const intent = event.data.object
   if (event.type !== 'payment_intent.succeeded' || intent.status !== 'succeeded') {
     throw new PaymentWebhookError('not_succeeded', `Event ${event.type} is not a settled payment.`)
@@ -203,14 +206,15 @@ export function assertPaymentWebhookMatchesOrder(
     throw new PaymentWebhookError('reference_mismatch', 'Event reference does not match this order.')
   }
   const currency = (expected.currency ?? 'USDC').trim().toUpperCase()
-  if (String(intent.amount?.currency ?? '').toUpperCase() !== currency) {
+  if (String(intent.amount.currency ?? '').toUpperCase() !== currency) {
     throw new PaymentWebhookError('currency_mismatch', 'Event currency does not match this order.')
   }
   const expectedAtomic = decimalToAtomic(expected.amount, intent.amount.decimals)
-  if (expectedAtomic === null || intent.amount.value !== expectedAtomic) {
+  // pay() never creates a zero-amount order, so "0" can only be a misconfigured expectation.
+  if (expectedAtomic === null || expectedAtomic === '0' || intent.amount.value !== expectedAtomic) {
     throw new PaymentWebhookError('amount_mismatch', 'Event amount does not match this order.')
   }
-  const recipient = intent.transaction?.recipient
+  const recipient = intent.transaction.recipient
   if (typeof recipient !== 'string' || !expected.recipients.some((own) => sameAddress(own, recipient))) {
     throw new PaymentWebhookError('recipient_mismatch', 'Funds did not go to an address you own.')
   }
@@ -229,11 +233,8 @@ export function assertPaymentWebhookMatchesOrder(
 // --- internals ---
 
 function readHeader(headers: HeaderSource, name: string): string | null {
-  if (typeof (headers as { get?: unknown }).get === 'function') {
-    return (headers as { get(name: string): string | null }).get(name)
-  }
-  const record = headers as Readonly<Record<string, string | readonly string[] | undefined>>
-  for (const [key, value] of Object.entries(record)) {
+  if ('get' in headers && typeof headers.get === 'function') return headers.get(name)
+  for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() !== name) continue
     if (typeof value === 'string') return value
     if (Array.isArray(value) && value.length === 1) return value[0]
@@ -261,10 +262,12 @@ function parseSignatureHeader(header: string): { timestamp: string; signature: U
 }
 
 function hexToBytes(hex: string, length: number): Uint8Array | null {
-  if (typeof hex !== 'string' || hex.length !== length * 2 || !/^[0-9a-fA-F]+$/.test(hex)) return null
-  const out = new Uint8Array(length)
-  for (let i = 0; i < length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
-  return out
+  try {
+    const bytes = nobleHexToBytes(hex)
+    return bytes.length === length ? bytes : null
+  } catch {
+    return null
+  }
 }
 
 async function ed25519Verify(
@@ -315,8 +318,9 @@ function decimalToAtomic(value: string, decimals: number): string | null {
 
 /** EVM hex addresses compare case-insensitively (EIP-55 is only a checksum);
  * everything else (Solana base58) is case-sensitive. */
+const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/
+
 function sameAddress(a: string, b: string): boolean {
-  const evm = /^0x[0-9a-fA-F]{40}$/
-  if (evm.test(a) && evm.test(b)) return a.toLowerCase() === b.toLowerCase()
+  if (EVM_ADDRESS.test(a) && EVM_ADDRESS.test(b)) return a.toLowerCase() === b.toLowerCase()
   return a === b
 }

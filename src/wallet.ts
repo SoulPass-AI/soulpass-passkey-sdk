@@ -2,10 +2,11 @@ import { PopupManager } from './popup-manager'
 import { PopupSession } from './popup-session'
 import { base64ToUint8Array, uint8ArrayToBase64 } from './encoding'
 import { SoulPassError, isSoulPassErrorCode, soulPassError } from './errors'
-import { deriveApiUrl, normalizeWalletOrigin } from './matrix-http'
+import { resolveWalletEndpoints } from './matrix-http'
 import { SignChannelClient, generateChannelId, SIGN_CHANNEL_PARAM } from './sign-channel'
 import type {
   SoulPassWalletConfig,
+  PopupConnectSuccessMessage,
   PopupMessage,
   PopupErrorMessage,
   SoulPassSession,
@@ -19,13 +20,15 @@ import type {
   VaultPda,
   StatePda,
 } from './types'
-import { DEFAULT_WALLET_URL, validateStatePda, validateVaultPda } from './types'
+import { validateStatePda, validateVaultPda } from './types'
 import type {
   PaymentAccount,
   PaymentAuthorizationSession,
   PaymentExecution,
   PaymentIntent,
 } from './payment-wire'
+
+type ConnectResult = PopupConnectSuccessMessage['payload']
 
 type EventType = 'connect' | 'disconnect' | 'accountChanged' | 'session'
 type EventHandler = (...args: any[]) => void
@@ -68,8 +71,10 @@ function popupError(payload: PopupErrorMessage['payload']): SoulPassError {
  * paid, so they become PAYMENT_STATUS_UNKNOWN: retrieve before concluding.
  */
 function executionOutcome(error: Error): SoulPassError {
-  if (error instanceof SoulPassError && error.code === 'USER_REJECTED') return error
-  if (error instanceof SoulPassError && error.code === 'PAYMENT_STATUS_UNKNOWN') return error
+  if (
+    error instanceof SoulPassError &&
+    (error.code === 'USER_REJECTED' || error.code === 'PAYMENT_STATUS_UNKNOWN')
+  ) return error
   return new SoulPassError(
     'PAYMENT_STATUS_UNKNOWN',
     'The wallet received the payment request but did not report a result ' +
@@ -114,9 +119,9 @@ export class SoulPassWallet {
       network: config.network ?? 'mainnet-beta',
       ...config,
     }
-    const walletUrl = normalizeWalletOrigin(config.walletUrl ?? DEFAULT_WALLET_URL)
-    this.popup = new PopupManager(walletUrl)
-    this.signChannel = new SignChannelClient(config.apiUrl ?? deriveApiUrl(walletUrl))
+    const { walletOrigin, apiUrl } = resolveWalletEndpoints(config)
+    this.popup = new PopupManager(walletOrigin)
+    this.signChannel = new SignChannelClient(apiUrl)
     warnIfProductTypeMissing(config)
   }
 
@@ -142,12 +147,7 @@ export class SoulPassWallet {
 
   // --- Public methods ---
 
-  async connect(): Promise<{
-    publicKey: VaultPda
-    walletAddress: VaultPda
-    accountAddress: StatePda
-    session?: SoulPassSession
-  }> {
+  async connect(): Promise<ConnectResult> {
     return new Promise((resolve, reject) => {
       const id = this.popup.generateId()
       const session = new PopupSession(this.popup)
@@ -538,21 +538,11 @@ export class SoulPassWallet {
 
   // --- Internal ---
 
-  private handleConnectSuccess(payload: {
-    publicKey: VaultPda
-    walletAddress: VaultPda
-    accountAddress: StatePda
-    session?: SoulPassSession
-  }): {
-    publicKey: VaultPda
-    walletAddress: VaultPda
-    accountAddress: StatePda
-    session?: SoulPassSession
-  } {
+  private handleConnectSuccess(payload: ConnectResult): ConnectResult {
     // `expiresIn` is relative to now; stamp the absolute deadline once, here,
     // so whatever the dApp persists can still be judged after a reload.
     const session = payload.session ? stampExpiry(payload.session) : undefined
-    const result = { ...payload, ...(session ? { session } : {}) }
+    const result = session ? { ...payload, session } : payload
     this._connected = true
     this._walletAddress = payload.walletAddress
     this._accountAddress = payload.accountAddress
