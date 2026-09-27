@@ -12,7 +12,10 @@
   `BAD_REQUEST`/`NETWORK_ERROR`/商户 `cancel()` 一律以 `PAYMENT_STATUS_UNKNOWN`
   拒绝（带 `paymentIntentId`、`retryable: false`，原错误在 `cause`），`pay()`
   保留恢复凭证。此前这些会以 `POPUP_CLOSED` 等被当成「用户拒绝」，商户可能
-  二次收款。discover 阶段关窗仍是 `POPUP_CLOSED`。
+  二次收款。discover 阶段关窗仍是 `POPUP_CLOSED`。归类在支付 client 统一完成，
+  对任何 `PaymentWallet` 生效：第三方钱包抛出的普通 `Error`、或 resolve 却缺
+  `transactionId`，同样是 `PAYMENT_STATUS_UNKNOWN`（此前为
+  `PAYMENT_AUTHORIZATION_FAILED` 并丢弃恢复凭证）；钱包本身只上报原始错误码。
 - **`useSoulPassPayments().pay()` 对 `PAYMENT_STATUS_UNKNOWN` 改为 reject**
   （仍同时设置 `statusUnknown`/`error`）。此前 resolve `null`，与「用户拒绝」
   无法区分。

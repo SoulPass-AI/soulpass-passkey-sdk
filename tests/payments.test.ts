@@ -589,13 +589,16 @@ describe('SoulPassPayments', () => {
     })
   })
 
-  it('an execute that ended with status unknown keeps recovery and names the intent', async () => {
+  it.each([
+    ['a closed window', new SoulPassError('POPUP_CLOSED', 'user closed the payment window')],
+    ['a merchant cancel', new SoulPassError('CANCELLED', 'payment session cancelled')],
+    ['a signer failure', new SoulPassError('SIGN_FAILED', 'broadcast then failed')],
+    ['an untyped wallet error', new Error('third-party wallet crashed')],
+  ])('%s during execute is status unknown, keeps recovery and names the intent', async (_, cause) => {
     const h = harness()
-    // What the wallet reports when the popup closed after PAYMENT_EXECUTE: it
-    // cannot know the intent id, so the client must attach it.
-    h.execute.mockRejectedValue(new SoulPassError('PAYMENT_STATUS_UNKNOWN', 'window closed', {
-      cause: new SoulPassError('POPUP_CLOSED', 'user closed the payment window'),
-    }))
+    // Any wallet — built-in or third-party — may have broadcast before failing;
+    // the client, not the wallet, owns that classification.
+    h.execute.mockRejectedValue(cause)
     const err = await h.payments.pay({
       amount: '10.50',
       recipients: { solana: SOLANA_OPTION.recipient },
@@ -605,6 +608,7 @@ describe('SoulPassPayments', () => {
       code: 'PAYMENT_STATUS_UNKNOWN',
       paymentIntentId: 'pi_siya_123',
       retryable: false,
+      cause,
     })
     expect(isUserDeclined(err)).toBe(false)
     expect(h.provider.complete).not.toHaveBeenCalled()
@@ -712,11 +716,13 @@ describe('SoulPassPayments', () => {
     expect(() => h.payments.beginPayment(CLIENT_SECRET)).not.toThrow()
   })
 
-  it('preserves a typed authorization failure without calling complete', async () => {
+  it('a wallet that resolves without a transaction id is status unknown', async () => {
     const h = harness()
-    h.execute.mockRejectedValue(new PaymentError('PAYMENT_AUTHORIZATION_FAILED', 'Rejected'))
+    h.execute.mockResolvedValue({ transactionId: '' })
     await expect(h.payments.beginPayment(CLIENT_SECRET).confirm()).rejects.toMatchObject({
-      code: 'PAYMENT_AUTHORIZATION_FAILED',
+      code: 'PAYMENT_STATUS_UNKNOWN',
+      paymentIntentId: 'pi_siya_123',
+      retryable: false,
     })
     expect(h.provider.complete).not.toHaveBeenCalled()
   })

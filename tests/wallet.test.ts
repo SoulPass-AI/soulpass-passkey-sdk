@@ -423,16 +423,14 @@ describe('SoulPassWallet', () => {
         }
       })
 
-      it('closing the window after execute is PAYMENT_STATUS_UNKNOWN, not a decline', async () => {
+      // The wallet reports raw codes; turning post-execute endings into
+      // PAYMENT_STATUS_UNKNOWN is the payments client's job (payments.test.ts).
+      it('closing the window after execute reports the raw POPUP_CLOSED', async () => {
         vi.useFakeTimers()
         try {
           let open = true
           const { executed } = await executing(() => open)
-          const expectation = expect(executed).rejects.toMatchObject({
-            code: 'PAYMENT_STATUS_UNKNOWN',
-            retryable: false,
-            cause: expect.objectContaining({ code: 'POPUP_CLOSED' }),
-          })
+          const expectation = expect(executed).rejects.toMatchObject({ code: 'POPUP_CLOSED' })
           open = false
           await vi.advanceTimersByTimeAsync(1000)
           await expectation
@@ -442,14 +440,11 @@ describe('SoulPassWallet', () => {
       })
 
       it.each(['SIGN_FAILED', 'NETWORK_ERROR', 'BAD_REQUEST', 'PASSKEY_FAILED', 'UNKNOWN'])(
-        'a %s after execute is PAYMENT_STATUS_UNKNOWN',
+        'a %s after execute is reported as-is',
         async (code) => {
           const { executed, id, emit } = await executing()
           emit({ type: 'ERROR', id, payload: { code, message: 'broadcast then failed' } })
-          await expect(executed).rejects.toMatchObject({
-            code: 'PAYMENT_STATUS_UNKNOWN',
-            cause: expect.objectContaining({ code }),
-          })
+          await expect(executed).rejects.toMatchObject({ code })
         },
       )
 
@@ -459,10 +454,10 @@ describe('SoulPassWallet', () => {
         await expect(executed).rejects.toMatchObject({ code: 'USER_REJECTED' })
       })
 
-      it('a dApp cancel after execute cannot claim nothing happened', async () => {
+      it('a dApp cancel after execute rejects the pending leg', async () => {
         const { session, executed } = await executing()
         session.cancel('merchant navigated away')
-        await expect(executed).rejects.toMatchObject({ code: 'PAYMENT_STATUS_UNKNOWN' })
+        await expect(executed).rejects.toMatchObject({ code: 'CANCELLED' })
       })
 
       it('a PAYMENT_EXECUTE that never left (window already gone) is POPUP_CLOSED', async () => {

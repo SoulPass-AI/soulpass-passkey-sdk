@@ -346,27 +346,21 @@ export class SoulPassPayments {
           }
         } catch (err) {
           settle()
-          // The wallet reports PAYMENT_STATUS_UNKNOWN for any ending after the
-          // execution reached it other than a pre-signature decline. Attach
-          // the intent id here — the one thing recovery needs — and keep it
-          // non-retryable: value may have moved (pay() keeps the recovery
-          // capability for exactly this code).
-          if (isSoulPassError(err) && err.code === 'PAYMENT_STATUS_UNKNOWN') {
-            throw new PaymentError('PAYMENT_STATUS_UNKNOWN', err.message, {
-              paymentIntentId: prepared.paymentIntent.id,
-              retryable: false,
-              cause: err.cause ?? err,
-            })
-          }
-          // A pre-delivery wallet-side rejection already carries the code the
-          // caller needs (USER_REJECTED, POPUP_CLOSED, CANCELLED). Flattening
-          // it into PAYMENT_AUTHORIZATION_FAILED would destroy the one
-          // distinction that decides whether to show an error at all.
-          if (isSoulPassError(err)) throw err
+          // From execute() on, the wallet may have signed and broadcast. Only
+          // an explicit USER_REJECTED — sent before any signature exists —
+          // proves nothing moved; every other ending (window closed, signer
+          // error, cancel, a missing transaction id) is PAYMENT_STATUS_UNKNOWN.
+          // Classifying here rather than in each wallet makes that hold for
+          // every PaymentWallet, not just the ones that remember to. Attach the
+          // intent id — the one thing recovery needs — and keep it
+          // non-retryable (pay() keeps the recovery capability for this code).
+          if (isSoulPassError(err) && err.code === 'USER_REJECTED') throw err
           throw new PaymentError(
-            'PAYMENT_AUTHORIZATION_FAILED',
-            err instanceof Error ? err.message : 'Payer authorization failed.',
-            { paymentIntentId: prepared.paymentIntent.id, cause: err },
+            'PAYMENT_STATUS_UNKNOWN',
+            'The wallet did not confirm the payment' +
+              `${err instanceof Error ? ` (${err.message})` : ''}. ` +
+              'Funds may have moved — retrieve the PaymentIntent before retrying.',
+            { paymentIntentId: prepared.paymentIntent.id, retryable: false, cause: err },
           )
         }
 
