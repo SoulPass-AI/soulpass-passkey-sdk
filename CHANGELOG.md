@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 — 未发布（2026-09-26 审计整改）
+## 0.4.0 — 2026-09-27（审计整改）
 
 0.x 阶段按 semver 惯例以 minor 承载破坏性变更。下列 **Breaking** 条目需要消费方
 （soulpass-ai / tens-gg / slabz-io 的 vendor 副本）随同步一起检查。
