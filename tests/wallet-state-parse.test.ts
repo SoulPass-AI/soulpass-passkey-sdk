@@ -4,8 +4,13 @@
 // RPC fallback contract; this one covers the pure `parseWalletState` byte-decoder
 // added alongside the wire-format split.
 
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import { describe, it, expect } from 'vitest'
+import { hexToBytes } from '@noble/hashes/utils'
 import {
+  walletAccountSize,
   parseWalletState,
   effectiveAuthorityKey,
   V1_HEADER_SIZE,
@@ -109,10 +114,28 @@ describe('parseWalletState', () => {
     )
   })
 
-  it('rejects a version byte != 1', () => {
-    expect(() => parseWalletState(makeAccount({ version: 2 }))).toThrow(
-      /unsupported.*version/i,
-    )
+  it('rejects a version byte other than 1 or 2', () => {
+    for (const version of [0, 3, 0xff]) {
+      expect(() => parseWalletState(makeAccount({ version })), `v${version}`).toThrow(
+        /unsupported.*version/i,
+      )
+    }
+  })
+
+  it('rejects a v1 body with trailing bytes (exact length, as the chain)', () => {
+    const v1 = makeAccount({})
+    const padded = new Uint8Array(v1.length + 1)
+    padded.set(v1)
+    expect(() => parseWalletState(padded)).toThrow(/trailing bytes/i)
+  })
+
+  it('rejects a version-2 body without the trailing root slot', () => {
+    // A v1-sized body relabelled v2 is 34 bytes short of its root.
+    expect(() => parseWalletState(makeAccount({ version: 2 }))).toThrow(/too small/i)
+  })
+
+  it('a v1 wallet has root = null', () => {
+    expect(parseWalletState(makeAccount({})).root).toBeNull()
   })
 
   it('rejects authority_count = 0 (chain enforces ≥ 1)', () => {
@@ -204,5 +227,92 @@ describe('parseWalletState', () => {
     expect(() => parseWalletState(new Uint8Array(buf))).toThrow(
       /account too small/i,
     )
+  })
+})
+
+// ── machine-wallet v2 layout KATs ────────────────────────────────────────
+//
+// `tests/fixtures/v2_layout_kat.json` is a verbatim copy of machine-wallet
+// `program/tests/vectors/v2_layout_kat.json` (ca6073d); check-fixtures keeps it
+// byte-identical to the Swift SDK's copy.
+
+interface LayoutVector {
+  name: string
+  fields: { name: string; hex: string }[]
+  length: number
+  bytes_hex: string
+}
+const layoutKat: { vectors: LayoutVector[] } = JSON.parse(
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'fixtures/v2_layout_kat.json'),
+    'utf8',
+  ),
+)
+const kat = (name: string): LayoutVector => {
+  const v = layoutKat.vectors.find((x) => x.name === name)
+  if (!v) throw new Error(`v2_layout_kat.json is missing ${name}`)
+  return v
+}
+const katField = (v: LayoutVector, name: string): Uint8Array => {
+  const f = v.fields.find((x) => x.name === name)
+  if (!f) throw new Error(`${v.name} has no field ${name}`)
+  return hexToBytes(f.hex)
+}
+
+describe('parseWalletState — v2 KAT (program bytes)', () => {
+  it('decodes wallet_v2_2auth_passkey_root field-for-field, root included', () => {
+    const v = kat('wallet_v2_2auth_passkey_root')
+    const data = hexToBytes(v.bytes_hex)
+    expect(data).toHaveLength(155)
+    expect(walletAccountSize(2, 2)).toBe(155)
+
+    const s = parseWalletState(data)
+    expect(s.version).toBe(2)
+    expect(s.bump).toBe(0xfe)
+    expect(Array.from(s.walletId)).toEqual(Array.from(katField(v, 'wallet_id')))
+    expect(s.threshold).toBe(1)
+    expect(s.authorityCount).toBe(2)
+    expect(s.nonce).toBe(7n)
+    expect(s.creationSlot).toBe(42n)
+    expect(s.vaultBump).toBe(0xfd)
+    expect(s.authorities).toHaveLength(2)
+    const slot = (name: string) => katField(v, name)
+    expect(s.authorities[0].sigScheme).toBe(SigScheme.Ed25519)
+    expect(Array.from(s.authorities[0].pubkey)).toEqual(Array.from(slot('authority_0').slice(1)))
+    expect(s.authorities[1].sigScheme).toBe(SigScheme.Webauthn)
+    expect(Array.from(s.authorities[1].pubkey)).toEqual(Array.from(slot('authority_1').slice(1)))
+    expect(s.root).not.toBeNull()
+    expect(s.root!.sigScheme).toBe(SigScheme.Webauthn)
+    expect(Array.from(s.root!.pubkey)).toEqual(Array.from(slot('root').slice(1)))
+    // Offsets shared with v1 are unchanged: the nonce still sits at 36.
+    expect(V1_OFFSET.NONCE).toBe(36)
+  })
+
+  it('rejects the v2 wallet image with a trailing byte or one byte short', () => {
+    const data = hexToBytes(kat('wallet_v2_2auth_passkey_root').bytes_hex)
+    const long = new Uint8Array(data.length + 1)
+    long.set(data)
+    expect(() => parseWalletState(long)).toThrow(/trailing bytes/i)
+    expect(() => parseWalletState(data.slice(0, -1))).toThrow(/too small/i)
+  })
+
+  it('rejects a v2 root that is not one of the authorities', () => {
+    const data = hexToBytes(kat('wallet_v2_2auth_passkey_root').bytes_hex)
+    data[data.length - 1] ^= 0x01
+    expect(() => parseWalletState(data)).toThrow(/root is not one of its authorities/i)
+  })
+
+  it('rejects an unknown root sig_scheme', () => {
+    const data = hexToBytes(kat('wallet_v2_2auth_passkey_root').bytes_hex)
+    data[walletAccountSize(1, 2)] = 7
+    expect(() => parseWalletState(data)).toThrow(/unknown root sig_scheme/i)
+  })
+
+  it('never decodes a SessionState v2 image (shared version byte 2) as a wallet', () => {
+    const v = kat('session_v2_p2_cash1_sleeve1_passkey_creator')
+    const data = hexToBytes(v.bytes_hex)
+    expect(data).toHaveLength(976)
+    expect(data[0]).toBe(2)
+    expect(() => parseWalletState(data)).toThrow(/MachineWallet account/i)
   })
 })

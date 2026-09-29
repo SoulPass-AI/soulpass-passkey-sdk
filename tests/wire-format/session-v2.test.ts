@@ -173,6 +173,8 @@ describe('v2 instruction data against v2_layout_kat.json', () => {
   })
 
   it('every layout vector is the concatenation of its fields', () => {
+    // Count pinned: a vector dropped from the fixture must fail, not shrink the loop.
+    expect(layoutKat.vectors).toHaveLength(5)
     for (const v of layoutKat.vectors) {
       expect(v.fields.map((f) => f.hex).join(''), v.name).toBe(v.bytes_hex)
       expect(v.bytes_hex.length / 2, v.name).toBe(v.length)

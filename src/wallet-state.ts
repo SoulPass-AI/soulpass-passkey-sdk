@@ -1,5 +1,5 @@
 /**
- * Off-chain reader for the MachineWallet v1 account body.
+ * Off-chain reader for the MachineWallet account body (layout v1 and v2).
  *
  * Lives here (not in `ephemeral-signers.ts`) because the byte layout is an
  * on-chain implementation detail of `machine-wallet`, while ephemeral-signer
@@ -53,6 +53,27 @@ export const V1_HEADER_SIZE = 53
 export const AUTHORITY_PUBKEY_SIZE = 33
 export const AUTHORITY_SLOT_SIZE = 1 + AUTHORITY_PUBKEY_SIZE
 export const V1_MIN_ACCOUNT_SIZE = V1_HEADER_SIZE + AUTHORITY_SLOT_SIZE
+
+/**
+ * Wallet layout versions (mirror `state.rs::MachineWallet::LAYOUT_VERSION{,_V2}`).
+ * v2 = the v1 body (header + N slots, offsets unchanged) followed by ONE
+ * trailing 34-byte root slot at `53 + N×34`; total `53 + N×34 + 34`.
+ * Every wallet the v2 program creates (and every wallet that ran AdoptRoot)
+ * is v2. The version byte `2` is shared with SessionState v2 — the lengths are
+ * disjoint (wallet ≤ 631, session v2 ≥ 856), which the exact-length check
+ * below turns into a hard reject.
+ */
+export const WALLET_LAYOUT_V1 = 1
+export const WALLET_LAYOUT_V2 = 2
+
+/** Exact account length for a wallet of `version` with `authorityCount` slots. */
+export function walletAccountSize(version: 1 | 2, authorityCount: number): number {
+  return (
+    V1_HEADER_SIZE +
+    authorityCount * AUTHORITY_SLOT_SIZE +
+    (version === WALLET_LAYOUT_V2 ? AUTHORITY_SLOT_SIZE : 0)
+  )
+}
 
 /**
  * Authority signature schemes (mirror `program/src/state.rs::SigScheme`).
@@ -119,14 +140,14 @@ export function effectiveAuthorityKey(slot: WalletAuthoritySlot): Uint8Array {
 }
 
 /**
- * Decoded v1 MachineWallet account. Returned by {@link parseWalletState}.
+ * Decoded MachineWallet account (layout v1 or v2). Returned by {@link parseWalletState}.
  *
  * `sigScheme` + `authority` mirror the *first* authority slot (back-compat
  * with the single-authority era); `authorities` carries every slot, in
  * on-chain order, so multi-owner surfaces don't re-derive byte offsets.
  */
 export interface MachineWalletState {
-  version: 1
+  version: 1 | 2
   bump: number
   walletId: Uint8Array // 32 bytes (keccak256(authority))
   threshold: number
@@ -143,6 +164,12 @@ export interface MachineWalletState {
   authority: Uint8Array
   /** Every authority slot, in on-chain order. `authorities[0]` ≡ `{ sigScheme, pubkey: authority }`. */
   authorities: ReadonlyArray<WalletAuthoritySlot>
+  /**
+   * v2 root slot (the authority that alone may remove authorities, change the
+   * threshold, close the wallet, rotate the root). Always one of
+   * `authorities` (same scheme and pubkey). `null` on v1 wallets.
+   */
+  root: WalletAuthoritySlot | null
 }
 
 /**
@@ -163,9 +190,13 @@ export class WalletNotDeployedError extends Error {
  * Parse a raw account body into a typed {@link WalletState}. Mirrors
  * `state.rs::MachineWallet::deserialize` byte-for-byte.
  *
- * Throws if the body is shorter than the v1 minimum, the version byte isn't
- * `1`, or `authority_count` is zero / would over-read the buffer. All three
- * are unrecoverable — distinct from "account doesn't exist yet" which is the
+ * Throws if the body is shorter than the v1 minimum, the version byte is
+ * neither `1` nor `2`, `authority_count` is zero, the length is not EXACTLY
+ * `walletAccountSize(version, authority_count)` (the chain's own
+ * `deserialize_inner` rule — it also keeps a SessionState v2 body, which
+ * shares version byte 2, from decoding as a wallet), a slot carries an
+ * unknown scheme, or a v2 root is not one of the authorities. All are
+ * unrecoverable — distinct from "account doesn't exist yet" which is the
  * caller's responsibility to detect (typically by checking `getAccountInfo`
  * returned null, then throwing {@link WalletNotDeployedError}).
  */
@@ -176,30 +207,27 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
     )
   }
 
-  const version = data[V1_OFFSET.VERSION]
-  if (version !== 1) {
-    throw new Error(`Unsupported MachineWallet version: ${version} (expected 1)`)
+  const rawVersion = data[V1_OFFSET.VERSION]
+  if (rawVersion !== WALLET_LAYOUT_V1 && rawVersion !== WALLET_LAYOUT_V2) {
+    throw new Error(`Unsupported MachineWallet version: ${rawVersion} (expected 1 or 2)`)
   }
+  const version: 1 | 2 = rawVersion
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
   const authorityCount = data[V1_OFFSET.AUTHORITY_COUNT]
   if (authorityCount < 1) {
     throw new Error(`Invalid authority_count: ${authorityCount}`)
   }
-  // Known divergence, deliberate: the chain uses `!=` here
-  // (`state.rs::deserialize_inner`, "no stale-slot shadowing possible") and
-  // Swift's decoder uses `==`, because `CreateWallet` allocates and `realloc`
-  // resizes to exactly `account_size(authority_count)` — a real account can
-  // never carry trailing bytes. This `<` is the weaker *bounds* check: it
-  // guarantees the reads below stay in range, which is all this decoder needs.
-  // Tightening it to `!==` would move a hot-path signing dependency
-  // (`predictNextExecuteNonce`) from "tolerates a byte pattern that cannot
-  // occur" to "hard-fails on it" — no gain against real data, real blast
-  // radius if that assumption ever slips.
-  const expected = V1_HEADER_SIZE + authorityCount * AUTHORITY_SLOT_SIZE
-  if (data.length < expected) {
+  // Exact length, per version — the chain's rule (`state.rs::deserialize_inner`
+  // `src.len() != account_size_v(version, count)`). `CreateWallet`/`realloc`
+  // always size the account exactly, so a real wallet never carries trailing
+  // bytes; with v2 the trailing slot IS data (the root), so a lenient `<`
+  // would read a root from whatever sits at `53 + N×34`.
+  const expected = walletAccountSize(version, authorityCount)
+  if (data.length !== expected) {
+    const what = data.length < expected ? 'too small' : 'has trailing bytes'
     throw new Error(
-      `MachineWallet account too small: ${data.length} < ${expected} for ${authorityCount} authorities`,
+      `MachineWallet account ${what}: ${data.length} != ${expected} for v${version} with ${authorityCount} authorities`,
     )
   }
 
@@ -226,8 +254,26 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
     })
   }
 
+  let root: WalletAuthoritySlot | null = null
+  if (version === WALLET_LAYOUT_V2) {
+    const off = walletAccountSize(WALLET_LAYOUT_V1, authorityCount)
+    const scheme = data[off]
+    if (!isKnownSigScheme(scheme)) {
+      throw new Error(`Unknown root sig_scheme byte: ${scheme}`)
+    }
+    const pubkey = data.slice(off + 1, off + 1 + AUTHORITY_PUBKEY_SIZE)
+    // Chain rule: the root must be a current authority (same scheme AND pubkey).
+    const isAuthority = authorities.some(
+      (a) => a.sigScheme === scheme && a.pubkey.every((b, i) => b === pubkey[i]),
+    )
+    if (!isAuthority) {
+      throw new Error('MachineWallet v2 root is not one of its authorities')
+    }
+    root = { sigScheme: scheme, pubkey }
+  }
+
   return {
-    version: 1,
+    version,
     bump: data[V1_OFFSET.BUMP],
     walletId: data.slice(V1_OFFSET.WALLET_ID, V1_OFFSET.WALLET_ID + 32),
     threshold: data[V1_OFFSET.THRESHOLD],
@@ -238,6 +284,7 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
     sigScheme: authorities[0].sigScheme,
     authority: authorities[0].pubkey,
     authorities,
+    root,
   }
 }
 
