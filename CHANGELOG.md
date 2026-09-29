@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.1 — 2026-09-29（读 v2 钱包）
+
+### Fixed
+
+- `parseWalletState` / `getWalletState` / `predictNextExecuteNonce` 读得了
+  machine-wallet v2 钱包（version 2 = v1 布局 + `53 + N×34` 处 34 字节 root 槽）。
+  v2 程序新建的钱包与 AdoptRoot 过的钱包都是 v2，0.5.0 对它们一律抛错。
+  `MachineWalletState` 新增 `root`（v1 为 `null`），`version` 放宽为 `1 | 2`；
+  长度按版本精确校验（与程序 `deserialize_inner` 一致，session v2 同版本字节的
+  账户不会被当成钱包）；root 必须是现有 authority。
+- 新导出 `WALLET_LAYOUT_V1` / `WALLET_LAYOUT_V2` / `walletAccountSize`。
+- KAT：`v2_layout_kat.json` 的 `wallet_v2_2auth_passkey_root` 逐字段钉住，session v2
+  镜像钉为拒绝；layout 循环加数量断言。
+
+### Note
+
+- v1 钱包带尾随字节现在报错（此前宽容）；链上不存在此类账户（程序同样拒绝）。
+
 ## 0.5.0 — 2026-09-29（machine-wallet v2）
 
 纯新增，无破坏性变更；与 machine-wallet ca6073d 的 v2 程序对齐。
