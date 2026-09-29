@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — 2026-09-29（machine-wallet v2）
+
+纯新增，无破坏性变更；与 machine-wallet ca6073d 的 v2 程序对齐。
+
+### Added
+
+- `MachineWalletDisc.RotateRoot`（17）/ `CreateSessionV2`（18）/ `AdoptRoot`（19）。
+- v2 签名消息：`computeCreateSessionV2Message`、`computeRotateRootMessage`、
+  `computeAdoptRootMessage`（后两者沿用程序的 `_v1` 标签），以及 v2 钱包上由
+  root 签的 `computeRemoveAuthorityV2Message` / `computeSetThresholdV2Message` /
+  `computeCloseWalletV2Message`（`_v2` 标签）；对应 `*_TAG` 常量一并导出。
+- v2 session：`hashSessionDataV2`、`encodeCashMintPolicy`、`buildCreateSessionV2IxData`，
+  以及 `buildRotateRootIxData` / `buildAdoptRootIxData`。
+- KAT：`session_data_v2_kat.json`、`v2_layout_kat.json` 与扩到 54 条的
+  `signed-message-kat-vectors.json`，均逐字节取自 machine-wallet；原 36 条 v1
+  向量逐字节不变（有测试钉住）。
+
 ## 0.4.0 — 2026-09-27（审计整改）
 
 0.x 阶段按 semver 惯例以 minor 承载破坏性变更。下列 **Breaking** 条目需要消费方
