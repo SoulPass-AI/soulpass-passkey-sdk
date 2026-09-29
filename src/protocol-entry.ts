@@ -76,6 +76,12 @@ export {
   ADD_AUTHORITY_POP_TAG,
   REMOVE_AUTHORITY_TAG,
   SET_THRESHOLD_TAG,
+  CREATE_SESSION_V2_TAG,
+  ROTATE_ROOT_TAG,
+  ADOPT_ROOT_TAG,
+  REMOVE_AUTHORITY_V2_TAG,
+  SET_THRESHOLD_V2_TAG,
+  CLOSE_WALLET_V2_TAG,
   computeCreateWalletMessage,
   computeCloseWalletMessage,
   computeAdvanceNonceMessage,
@@ -86,6 +92,12 @@ export {
   computeAddAuthorityPopMessage,
   computeRemoveAuthorityMessage,
   computeSetThresholdMessage,
+  computeCreateSessionV2Message,
+  computeRotateRootMessage,
+  computeAdoptRootMessage,
+  computeRemoveAuthorityV2Message,
+  computeSetThresholdV2Message,
+  computeCloseWalletV2Message,
 } from './wire-format/authority-messages'
 export type { AuthorityMessageBase } from './wire-format/authority-messages'
 export {
@@ -94,6 +106,17 @@ export {
   encodeRemainingAccounts,
 } from './wire-format/execute-ix'
 export type { RemainingAccount } from './wire-format/execute-ix'
+export {
+  MAX_SESSION_ALLOWED_PROGRAMS,
+  MAX_SESSION_CASH_MINTS,
+  CASH_MINT_POLICY_WIRE_LEN,
+  encodeCashMintPolicy,
+  hashSessionDataV2,
+  buildCreateSessionV2IxData,
+  buildRotateRootIxData,
+  buildAdoptRootIxData,
+} from './wire-format/session-v2'
+export type { SessionCashPolicy, SessionV2Params } from './wire-format/session-v2'
 export { buildSecp256r1PrecompileIxData } from './wire-format/secp256r1'
 export {
   SOULPASS_RP_ID,

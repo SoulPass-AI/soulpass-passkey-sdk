@@ -11,5 +11,8 @@ describe('MachineWalletDisc', () => {
     expect(MachineWalletDisc.AddAuthority).toBe(9)
     expect(MachineWalletDisc.ProvideWebAuthnEvidence).toBe(15)
     expect(MachineWalletDisc.ExecuteWithEphemeralSigners).toBe(16)
+    expect(MachineWalletDisc.RotateRoot).toBe(17)
+    expect(MachineWalletDisc.CreateSessionV2).toBe(18)
+    expect(MachineWalletDisc.AdoptRoot).toBe(19)
   })
 })

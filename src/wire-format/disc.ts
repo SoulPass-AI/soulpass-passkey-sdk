@@ -26,6 +26,22 @@ export const MachineWalletDisc = {
    * `processor/execute.rs::process_with_ephemeral_signers`.
    */
   ExecuteWithEphemeralSigners: 16,
+  /**
+   * RotateRoot — v2 wallets: move the root role to an already-registered
+   * authority. Signed by the current root (`machine_wallet_rotate_root_v1`).
+   */
+  RotateRoot: 17,
+  /**
+   * CreateSessionV2 — a session bound to a mandate hash and a creator
+   * authority, with per-mint cash budgets (`machine_wallet_create_session_v2`).
+   */
+  CreateSessionV2: 18,
+  /**
+   * AdoptRoot — upgrade a v1 wallet to v2 by designating one of its current
+   * authorities as root; grows the wallet by a 34-byte root tail
+   * (`machine_wallet_adopt_root_v1`).
+   */
+  AdoptRoot: 19,
 } as const;
 
 export type MachineWalletDiscValue =

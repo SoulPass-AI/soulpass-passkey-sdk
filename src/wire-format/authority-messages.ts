@@ -42,6 +42,25 @@ export const ADD_AUTHORITY_POP_TAG = encoder.encode(
 export const REMOVE_AUTHORITY_TAG = encoder.encode('machine_wallet_remove_authority_v1');
 export const SET_THRESHOLD_TAG = encoder.encode('machine_wallet_set_threshold_v1');
 
+// ── machine-wallet v2 (program ca6073d) ──────────────────────────────────────
+// Tag strings are the program's, verbatim. RotateRoot / AdoptRoot are new
+// operations and so `_v1`; RemoveAuthority / SetThreshold / CloseWallet on a
+// v2 wallet and CreateSessionV2 are `_v2`, so a v1 signature can never
+// authorize them. Pinned by `signed-message-kat-vectors.json`.
+
+/** CreateSessionV2 (disc 18). `CREATE_SESSION_V2_TAG` in create_session.rs. */
+export const CREATE_SESSION_V2_TAG = encoder.encode('machine_wallet_create_session_v2');
+/** RotateRoot (disc 17). `ROTATE_ROOT_TAG` in rotate_root.rs. */
+export const ROTATE_ROOT_TAG = encoder.encode('machine_wallet_rotate_root_v1');
+/** AdoptRoot (disc 19). `ADOPT_ROOT_TAG` in adopt_root.rs. */
+export const ADOPT_ROOT_TAG = encoder.encode('machine_wallet_adopt_root_v1');
+/** RemoveAuthority on a v2 wallet (root-signed). `REMOVE_AUTHORITY_V2_TAG` in remove_authority.rs. */
+export const REMOVE_AUTHORITY_V2_TAG = encoder.encode('machine_wallet_remove_authority_v2');
+/** SetThreshold on a v2 wallet (root-signed). `SET_THRESHOLD_V2_TAG` in set_threshold.rs. */
+export const SET_THRESHOLD_V2_TAG = encoder.encode('machine_wallet_set_threshold_v2');
+/** CloseWallet on a v2 wallet (root-signed). `CLOSE_WALLET_V2_TAG` in close_wallet.rs. */
+export const CLOSE_WALLET_V2_TAG = encoder.encode('machine_wallet_close_v2');
+
 /** Operands shared by every authority-signed operation except CreateWallet. */
 export interface AuthorityMessageBase {
   walletPDA: PublicKey;
@@ -243,6 +262,106 @@ export function computeSetThresholdMessage(
     payloadParts: [
       ...authorityPayload(args),
       requireByte(args.newThreshold, 'newThreshold'),
+    ],
+  });
+}
+
+// ── machine-wallet v2 messages ───────────────────────────────────────────────
+// Same payloads as their v1 counterparts (or, for the root ops, preamble
+// `|| sig_scheme(1) || pubkey(33)`), under the v2 tags above.
+
+/**
+ * CreateSessionV2: preamble `|| session_data_hash(32)` under
+ * `machine_wallet_create_session_v2`, where `sessionDataHash` comes from
+ * `hashSessionDataV2` (`session-v2.ts`).
+ */
+export function computeCreateSessionV2Message(
+  args: AuthorityMessageBase & { sessionDataHash: Uint8Array },
+): Uint8Array {
+  return hashSignedMessage({
+    deployment: args.deployment,
+    tag: CREATE_SESSION_V2_TAG,
+    payloadParts: [
+      ...authorityPayload(args),
+      requireLength(args.sessionDataHash, 32, 'sessionDataHash'),
+    ],
+  });
+}
+
+/** RotateRoot: preamble `|| new_root_sig_scheme(1) || new_root_pubkey(33)`. Signed by the current root. */
+export function computeRotateRootMessage(
+  args: AuthorityMessageBase & { newRootSigScheme: number; newRootPubkey: Uint8Array },
+): Uint8Array {
+  return hashSignedMessage({
+    deployment: args.deployment,
+    tag: ROTATE_ROOT_TAG,
+    payloadParts: [
+      ...authorityPayload(args),
+      requireByte(args.newRootSigScheme, 'newRootSigScheme'),
+      requireLength(args.newRootPubkey, 33, 'newRootPubkey'),
+    ],
+  });
+}
+
+/** AdoptRoot: preamble `|| root_sig_scheme(1) || root_pubkey(33)`. Threshold-approved. */
+export function computeAdoptRootMessage(
+  args: AuthorityMessageBase & { rootSigScheme: number; rootPubkey: Uint8Array },
+): Uint8Array {
+  return hashSignedMessage({
+    deployment: args.deployment,
+    tag: ADOPT_ROOT_TAG,
+    payloadParts: [
+      ...authorityPayload(args),
+      requireByte(args.rootSigScheme, 'rootSigScheme'),
+      requireLength(args.rootPubkey, 33, 'rootPubkey'),
+    ],
+  });
+}
+
+/** RemoveAuthority on a v2 wallet: the v1 payload under `machine_wallet_remove_authority_v2`. */
+export function computeRemoveAuthorityV2Message(
+  args: AuthorityMessageBase & {
+    removeSigScheme: number;
+    removePubkey: Uint8Array;
+    newThreshold: number;
+  },
+): Uint8Array {
+  return hashSignedMessage({
+    deployment: args.deployment,
+    tag: REMOVE_AUTHORITY_V2_TAG,
+    payloadParts: [
+      ...authorityPayload(args),
+      requireByte(args.removeSigScheme, 'removeSigScheme'),
+      requireLength(args.removePubkey, 33, 'removePubkey'),
+      requireByte(args.newThreshold, 'newThreshold'),
+    ],
+  });
+}
+
+/** SetThreshold on a v2 wallet: the v1 payload under `machine_wallet_set_threshold_v2`. */
+export function computeSetThresholdV2Message(
+  args: AuthorityMessageBase & { newThreshold: number },
+): Uint8Array {
+  return hashSignedMessage({
+    deployment: args.deployment,
+    tag: SET_THRESHOLD_V2_TAG,
+    payloadParts: [
+      ...authorityPayload(args),
+      requireByte(args.newThreshold, 'newThreshold'),
+    ],
+  });
+}
+
+/** CloseWallet on a v2 wallet: the v1 payload under `machine_wallet_close_v2`. */
+export function computeCloseWalletV2Message(
+  args: AuthorityMessageBase & { destination: Uint8Array },
+): Uint8Array {
+  return hashSignedMessage({
+    deployment: args.deployment,
+    tag: CLOSE_WALLET_V2_TAG,
+    payloadParts: [
+      ...authorityPayload(args),
+      requireLength(args.destination, 32, 'destination'),
     ],
   });
 }

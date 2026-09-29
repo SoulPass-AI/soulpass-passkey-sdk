@@ -17,6 +17,7 @@
  */
 
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -45,6 +46,18 @@ import {
   computeAddAuthorityPopMessage,
   computeRemoveAuthorityMessage,
   computeSetThresholdMessage,
+  computeCreateSessionV2Message,
+  computeRotateRootMessage,
+  computeAdoptRootMessage,
+  computeRemoveAuthorityV2Message,
+  computeSetThresholdV2Message,
+  computeCloseWalletV2Message,
+  CREATE_SESSION_V2_TAG,
+  ROTATE_ROOT_TAG,
+  ADOPT_ROOT_TAG,
+  REMOVE_AUTHORITY_V2_TAG,
+  SET_THRESHOLD_V2_TAG,
+  CLOSE_WALLET_V2_TAG,
 } from '../../src/wire-format/authority-messages'
 
 interface Vector {
@@ -89,9 +102,9 @@ const digestFor = (operation: string, deployment: MachineWalletDeployment): stri
 
 describe('signed-message KATs', () => {
   it('reproduces every vector byte-for-byte', () => {
-    // 3 deployment domains × 12 operations. A shrunken fixture must not
-    // quietly pass as "all vectors matched".
-    expect(fixture.vectors).toHaveLength(36)
+    // 3 deployment domains × 18 operations (12 v1 + 6 machine-wallet v2). A
+    // shrunken fixture must not quietly pass as "all vectors matched".
+    expect(fixture.vectors).toHaveLength(54)
 
     for (const vector of fixture.vectors) {
       const actual = hashSignedMessage({
@@ -101,6 +114,30 @@ describe('signed-message KATs', () => {
       })
       expect(hex(actual), `vector ${vector.name}`).toBe(vector.keccak256_hex)
     }
+  })
+
+  /**
+   * The v2 sync (machine-wallet ca6073d) only ADDED vectors. Every signature a
+   * v1 client already produces must keep verifying, so the 36 pre-v2 vectors
+   * are pinned as a set: same names, same bytes. The digest is sha256 over
+   * JSON.stringify of those vectors sorted by name, computed from the fixture
+   * as it stood before the sync (the program interleaves the new ops per
+   * deployment, so file order moved — content did not).
+   */
+  it('keeps the 36 v1 vectors byte-identical across the v2 sync', () => {
+    const V1_OPS = [
+      'execute', 'execute_ephemeral', 'create_session', 'close_wallet',
+      'add_authority_pop', 'create_wallet', 'advance_nonce', 'revoke_session',
+      'owner_close_session', 'add_authority', 'remove_authority', 'set_threshold',
+    ]
+    const v1Names = new Set(DEPLOYMENTS.flatMap((d) => V1_OPS.map((op) => `${op}_${d}`)))
+    const v1 = fixture.vectors
+      .filter((v) => v1Names.has(v.name))
+      .sort((a, b) => (a.name < b.name ? -1 : 1))
+    expect(v1).toHaveLength(36)
+    expect(createHash('sha256').update(JSON.stringify(v1)).digest('hex')).toBe(
+      'd6289b23678ce01b8cd197b323a1fe83fdbcb53f4b1abfabb0b100b73e856a5d',
+    )
   })
 
   it('pins the envelope this SDK compiles against', () => {
@@ -296,6 +333,91 @@ describe('authority message hashes against the contract vectors', () => {
     ).toThrow(RangeError)
     expect(() =>
       computeSetThresholdMessage({ ...base, newThreshold: 256 }),
+    ).toThrow(RangeError)
+  })
+})
+
+describe('machine-wallet v2 message hashes against the contract vectors', () => {
+  // Mirrors the constants at the top of the contract's signed_message_kat.rs.
+  const wallet = new PublicKey(new Uint8Array(32).fill(0xaa))
+  const base = (deployment: MachineWalletDeployment) => ({
+    walletPDA: wallet,
+    creationSlot: 1000n,
+    nonce: 7n,
+    maxSlot: 250_000n,
+    deployment,
+  })
+  // rotate/adopt/remove v2 run on the PoP operand set, like their v1 siblings.
+  const popBase = (deployment: MachineWalletDeployment) => ({
+    walletPDA: wallet,
+    creationSlot: 100n,
+    nonce: 5n,
+    maxSlot: 200n,
+    deployment,
+  })
+  const popPubkey = Uint8Array.from([0x02, ...new Uint8Array(32).fill(0x42)])
+
+  it.each(DEPLOYMENTS)('every v2 message matches on %s', (deployment) => {
+    expect(
+      hex(computeCreateSessionV2Message({ ...base(deployment), sessionDataHash: new Uint8Array(32).fill(0x33) })),
+    ).toBe(digestFor('create_session_v2', deployment))
+    expect(
+      hex(computeRotateRootMessage({ ...popBase(deployment), newRootSigScheme: 0, newRootPubkey: popPubkey })),
+    ).toBe(digestFor('rotate_root', deployment))
+    expect(
+      hex(computeAdoptRootMessage({ ...popBase(deployment), rootSigScheme: 0, rootPubkey: popPubkey })),
+    ).toBe(digestFor('adopt_root', deployment))
+    expect(
+      hex(
+        computeRemoveAuthorityV2Message({
+          ...popBase(deployment),
+          removeSigScheme: 0,
+          removePubkey: popPubkey,
+          newThreshold: 2,
+        }),
+      ),
+    ).toBe(digestFor('remove_authority_v2', deployment))
+    expect(hex(computeSetThresholdV2Message({ ...base(deployment), newThreshold: 2 }))).toBe(
+      digestFor('set_threshold_v2', deployment),
+    )
+    expect(
+      hex(computeCloseWalletV2Message({ ...base(deployment), destination: new Uint8Array(32).fill(0xbb) })),
+    ).toBe(digestFor('close_wallet_v2', deployment))
+  })
+
+  /**
+   * RotateRoot / AdoptRoot are new operations (`_v1`); the three v2-wallet
+   * authority ops and CreateSessionV2 re-tag an existing payload (`_v2`) so a
+   * v1 signature can never authorize them. A mechanical "_v1 → _v2" sweep
+   * would break exactly the two root tags.
+   */
+  it('uses the program tag strings verbatim', () => {
+    const d = (t: Uint8Array) => new TextDecoder().decode(t)
+    expect(d(CREATE_SESSION_V2_TAG)).toBe('machine_wallet_create_session_v2')
+    expect(d(ROTATE_ROOT_TAG)).toBe('machine_wallet_rotate_root_v1')
+    expect(d(ADOPT_ROOT_TAG)).toBe('machine_wallet_adopt_root_v1')
+    expect(d(REMOVE_AUTHORITY_V2_TAG)).toBe('machine_wallet_remove_authority_v2')
+    expect(d(SET_THRESHOLD_V2_TAG)).toBe('machine_wallet_set_threshold_v2')
+    expect(d(CLOSE_WALLET_V2_TAG)).toBe('machine_wallet_close_v2')
+  })
+
+  it('a v2 message never equals its v1 counterpart over the same payload', () => {
+    const b = base('devnet')
+    expect(hex(computeSetThresholdV2Message({ ...b, newThreshold: 2 }))).not.toBe(
+      hex(computeSetThresholdMessage({ ...b, newThreshold: 2 })),
+    )
+    const h = new Uint8Array(32).fill(0x33)
+    expect(hex(computeCreateSessionV2Message({ ...b, sessionDataHash: h }))).not.toBe(
+      hex(computeCreateSessionMessage({ ...b, sessionDataHash: h })),
+    )
+  })
+
+  it('rejects root operands of the wrong width', () => {
+    expect(() =>
+      computeRotateRootMessage({ ...popBase('devnet'), newRootSigScheme: 2, newRootPubkey: new Uint8Array(32) }),
+    ).toThrow(RangeError)
+    expect(() =>
+      computeAdoptRootMessage({ ...popBase('devnet'), rootSigScheme: 256, rootPubkey: popPubkey }),
     ).toThrow(RangeError)
   })
 })
