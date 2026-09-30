@@ -30,6 +30,14 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
   （13、14、18、19）；每条指令一个 `build*IxData` 及其账户表（`*_ACCOUNTS`）。
 - 所有 builder 统一取单个对象参数（含 `maxSlot`），宽度或字节越界抛 `RangeError`。
   `buildCreateSessionIxData({ maxSlot, ...params })`。
+- 账户表与各 processor 的账户顺序、可写性一致：`ADD_AUTHORITY_ACCOUNTS` /
+  `REMOVE_AUTHORITY_ACCOUNTS`（治理三账户 + System Program）、`EXECUTE_ACCOUNTS`
+  （disc 1 / 16）、`CLOSE_WALLET_ACCOUNTS` 的 vault 与 `SESSION_EXECUTE_ACCOUNTS` 的
+  session / vault 可写。
+- `buildAddAuthorityIxData` 的 `newThreshold` 可选（默认 0），必须与
+  `computeAddAuthorityMessage` 签的值相同。
+- inner 指令数必须为 1..=64（`MAX_INNER_INSTRUCTIONS`）；`computeExecuteEphemeralMessage`
+  与 `buildExecuteIxData` 同样要求 1..=4 个 bump。
 - `buildExecuteIxData`：省略 `ephemeralSignerBumps` 为 Execute（disc 1），1..=4 个
   bump 为 ExecuteWithEphemeralSigners（disc 16），空数组抛错。
 - Session 参数：`CashMintPolicy`、`SessionParams`、`validateSessionParams`、
@@ -41,7 +49,7 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
 - 程序常量（`wire-format/constants.ts`）：账户标签、容量上限、槽数、头尺寸、
   `NATIVE_SOL_MINT` + `isNativeSolMint` 等，每个值只定义一处。
 - 程序错误码：`MachineWalletError`、`RETIRED_ERROR_CODES`、`describeMachineWalletError`。
-- `deriveWalletPda` / `deriveSessionPda`。
+- `deriveWalletPda` / `deriveSessionPda`；种子 `WALLET_SEED` / `VAULT_SEED` / `SESSION_SEED`。
 
 ### 已删除
 
@@ -50,16 +58,26 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
 `computeRemoveAuthorityMessage`、`hashSessionDataV2`、`SessionV2Params`、
 `SessionCashPolicy`（即 `CashMintPolicy`）、`buildCreateSessionV2IxData`、
 `buildAdoptRootIxData`、`MAX_SESSION_ALLOWED_PROGRAMS` / `MAX_SESSION_CASH_MINTS`
-（即 `MAX_ALLOWED_PROGRAMS` / `MAX_CASH_MINTS`），以及 `src/wire-format/session-v2.ts`。
+（即 `MAX_ALLOWED_PROGRAMS` / `MAX_CASH_MINTS`，后者为 5），以及 `src/wire-format/session-v2.ts`。
+下游还会碰到：
+
+- `MachineWalletDisc.CreateSessionV2` / `.AdoptRoot` 删除（18、19 进 `REJECTED_DISCS`）。
+- `walletAccountSize(version, count)` → `walletAccountSize(count)`。
+- `MachineWalletState` 删除 `version` / `sigScheme` / `authority`（用 `authorities` /
+  `root` / `isRoot` / `findAuthority`），`root` 不再为 `null`。
+- `EXECUTE_EPHEMERAL_TAG` 同名但值改为 `machine_wallet_execute_ephemeral_v1`
+  （原为 `…_v2`），disc 16 的签名哈希随之改变。
+- `computeOwnerCloseSessionMessage` 不再接受 `destination`。
+- `buildExecuteIxData` 传空 `ephemeralSignerBumps` 抛错（disc 1 请省略该字段）。
 
 ### 其他
 
-- `./payments`：direct 支付凭证的 sessionStorage 键改为
-  `soulpass_direct_payment_capability:<id>`。
 - KAT：`signed_message_kat.json`（57 条 = 19 操作 × 3 域）、`session_data_kat.json`、
   `layout_kat.json` 均逐字节取自程序，`npm test` 校验副本新鲜度。
 
 ## 0.5.1 — 2026-09-29（读 v2 钱包）
+
+> 本条描述的是已删除的过渡期程序（v1/v2 双布局）；0.6.0 起不再适用。
 
 ### Fixed
 
@@ -78,6 +96,8 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
 - v1 钱包带尾随字节现在报错（此前宽容）；链上不存在此类账户（程序同样拒绝）。
 
 ## 0.5.0 — 2026-09-29（machine-wallet v2）
+
+> 本条描述的是已删除的过渡期程序（v1/v2 双布局）；0.6.0 起不再适用。
 
 纯新增，无破坏性变更；与 machine-wallet ca6073d 的 v2 程序对齐。
 

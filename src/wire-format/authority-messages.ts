@@ -2,11 +2,8 @@
  * Message hashes for every authority-signed MachineWallet operation other than
  * Execute (which lives in `operation-hash.ts`).
  *
- * These previously had no SDK mirror, so each consumer hand-rolled the ones it
- * needed — soulpass-ai carried its own CreateWallet/AddAuthority preimages, and
- * they were still v0 long after the chain moved to v1. One definition per
- * operation, in the package the chain-facing code already depends on, is what
- * stops that from recurring.
+ * One definition per operation, in the package the chain-facing code already
+ * depends on, so no consumer hand-rolls a preimage.
  *
  * Every payload below is pinned byte-for-byte against the contract's own KAT
  * vectors in `tests/wire-format/signed-message-kat.test.ts`.
