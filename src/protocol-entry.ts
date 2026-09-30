@@ -117,16 +117,14 @@ export {
 } from './wire-format/execute-ix'
 export type { RemainingAccount } from './wire-format/execute-ix'
 export {
-  MAX_SESSION_ALLOWED_PROGRAMS,
-  MAX_SESSION_CASH_MINTS,
   CASH_MINT_POLICY_WIRE_LEN,
+  CREATE_SESSION_ACCOUNTS,
   encodeCashMintPolicy,
-  hashSessionDataV2,
-  buildCreateSessionV2IxData,
-  buildRotateRootIxData,
-  buildAdoptRootIxData,
-} from './wire-format/session-v2'
-export type { SessionCashPolicy, SessionV2Params } from './wire-format/session-v2'
+  validateSessionParams,
+  hashSessionData,
+  buildCreateSessionIxData,
+} from './wire-format/session'
+export type { CashMintPolicy, SessionParams } from './wire-format/session'
 export { buildSecp256r1PrecompileIxData } from './wire-format/secp256r1'
 export {
   SOULPASS_RP_ID,
