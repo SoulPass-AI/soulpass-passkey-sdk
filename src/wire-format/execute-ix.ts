@@ -8,7 +8,7 @@
  */
 
 import { MachineWalletDisc } from './disc';
-import { MAX_CLIENT_DATA_JSON_SIZE, MAX_EPHEMERAL_SIGNERS } from './constants';
+import { MAX_CLIENT_DATA_JSON_SIZE, MAX_EPHEMERAL_SIGNERS, MAX_INNER_INSTRUCTIONS } from './constants';
 import type { InnerInstruction } from './inner-hash';
 import { accountFlags } from './inner-hash';
 import { u16LE, u32LE, u64LE, concatBytes } from './_bytes';
@@ -114,11 +114,18 @@ export function buildExecuteIxData(args: {
  * `inner_count(u32 LE) || encoded inner ixs` — the tail shared by Execute,
  * ExecuteWithEphemeralSigners and SessionExecute (`parse_inner_instructions`).
  * Internal to `wire-format/`.
+ *
+ * Throws `RangeError` outside 1..=`MAX_INNER_INSTRUCTIONS` (64): the decoder
+ * rejects more than 64 and every handler rejects an empty list.
  */
 export function encodeInnerInstructions(
   innerInstructions: ReadonlyArray<InnerInstruction>,
   remainingAccounts: ReadonlyArray<RemainingAccount>,
 ): Uint8Array {
+  const count = innerInstructions.length;
+  if (count < 1 || count > MAX_INNER_INSTRUCTIONS) {
+    throw new RangeError(`innerInstructions must hold 1..=${MAX_INNER_INSTRUCTIONS} entries, got ${count}`);
+  }
   const indexByPubkey = new Map<string, number>();
   for (let i = 0; i < remainingAccounts.length; i++) {
     indexByPubkey.set(remainingAccounts[i].pubkey.toBase58(), i);

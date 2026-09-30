@@ -41,6 +41,9 @@ export {
   SESSION_HEADER_SIZE,
   CASH_MINT_STATE_SIZE,
   SLEEVE_ENTRY_SIZE,
+  WALLET_SEED,
+  VAULT_SEED,
+  SESSION_SEED,
 } from './wire-format/constants'
 
 // ── Program error codes ──────────────────────────────────────────────────
@@ -160,6 +163,9 @@ export {
 export type { RemainingAccount } from './wire-format/execute-ix'
 export {
   GOVERNED_ACCOUNTS,
+  ADD_AUTHORITY_ACCOUNTS,
+  REMOVE_AUTHORITY_ACCOUNTS,
+  EXECUTE_ACCOUNTS,
   REVOKE_SESSION_ACCOUNTS,
   OWNER_CLOSE_SESSION_ACCOUNTS,
   CLOSE_SESSION_ACCOUNTS,

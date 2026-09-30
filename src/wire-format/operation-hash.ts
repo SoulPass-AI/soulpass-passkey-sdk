@@ -14,6 +14,7 @@
  */
 
 import { requireByte, requireLength } from './_bytes';
+import { MAX_EPHEMERAL_SIGNERS } from './constants';
 import {
   authorityPayload,
   MACHINE_WALLET_TAGS,
@@ -62,13 +63,17 @@ export function computeExecuteMessage(
  * Payload: `wallet(32) || creation_slot_u64_le || nonce_u64_le ||
  * max_slot_u64_le || bumps_len(1) || bumps(bumps_len) || inner_hash(32)`.
  *
- * The `bumps_len` byte caps `ephemeralSignerBumps.length` at 255 — well above
- * the on-chain `MAX_EPHEMERAL_SIGNERS = 4`. `requireByte` throws at the
- * wire-format ceiling rather than silently truncating.
+ * Throws `RangeError` unless `ephemeralSignerBumps` holds
+ * 1..=`MAX_EPHEMERAL_SIGNERS` (4) bumps — the same bound `buildExecuteIxData`
+ * enforces, so nothing the chain would reject gets signed first.
  */
 export function computeExecuteEphemeralMessage(
   args: AuthorityMessageBase & { ephemeralSignerBumps: Uint8Array; innerHash: Uint8Array },
 ): Uint8Array {
+  const n = args.ephemeralSignerBumps.length;
+  if (n < 1 || n > MAX_EPHEMERAL_SIGNERS) {
+    throw new RangeError(`ephemeralSignerBumps must hold 1..=${MAX_EPHEMERAL_SIGNERS} bumps, got ${n}`);
+  }
   return hashSignedMessage({
     deployment: args.deployment,
     tag: EXECUTE_EPHEMERAL_TAG,

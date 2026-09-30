@@ -115,14 +115,14 @@ describe('computeExecuteEphemeralMessage', () => {
       creationSlot: 100n,
       nonce: 5n,
       maxSlot: 200n,
-      ephemeralSignerBumps: new Uint8Array(),
+      ephemeralSignerBumps: Uint8Array.of(255),
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     })
     expect(plain).not.toEqual(ephemeral)
   })
 
-  it('length-prefixes bumps — empty and single-zero must differ', () => {
+  it('length-prefixes bumps — [0] and [0, 0] must differ', () => {
     const base = {
       walletPDA,
       creationSlot: 0n,
@@ -131,29 +131,23 @@ describe('computeExecuteEphemeralMessage', () => {
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     }
-    const empty = computeExecuteEphemeralMessage({
-      ...base,
-      ephemeralSignerBumps: new Uint8Array(),
-    })
-    const zero = computeExecuteEphemeralMessage({
-      ...base,
-      ephemeralSignerBumps: Uint8Array.of(0),
-    })
-    expect(empty).not.toEqual(zero)
+    const one = computeExecuteEphemeralMessage({ ...base, ephemeralSignerBumps: Uint8Array.of(0) })
+    const two = computeExecuteEphemeralMessage({ ...base, ephemeralSignerBumps: Uint8Array.of(0, 0) })
+    expect(one).not.toEqual(two)
   })
 
-  it('rejects > 255 bumps — u8 length prefix invariant', () => {
-    expect(() =>
-      computeExecuteEphemeralMessage({
-        walletPDA,
-        creationSlot: 0n,
-        nonce: 0n,
-        maxSlot: 0n,
-        ephemeralSignerBumps: new Uint8Array(256),
-        innerHash: VALID_INNER_HASH,
-        deployment: DEPLOYMENT,
-      }),
-    ).toThrow(/u8/)
+  it('rejects 0 or more than MAX_EPHEMERAL_SIGNERS (4) bumps, as buildExecuteIxData does', () => {
+    const base = {
+      walletPDA,
+      creationSlot: 0n,
+      nonce: 0n,
+      maxSlot: 0n,
+      innerHash: VALID_INNER_HASH,
+      deployment: DEPLOYMENT,
+    }
+    expect(() => computeExecuteEphemeralMessage({ ...base, ephemeralSignerBumps: new Uint8Array() })).toThrow(RangeError)
+    expect(() => computeExecuteEphemeralMessage({ ...base, ephemeralSignerBumps: new Uint8Array(5) })).toThrow(RangeError)
+    expect(() => computeExecuteEphemeralMessage({ ...base, ephemeralSignerBumps: new Uint8Array(4) })).not.toThrow()
   })
 
   it('rejects innerHash != 32 bytes', () => {
@@ -163,7 +157,7 @@ describe('computeExecuteEphemeralMessage', () => {
         creationSlot: 0n,
         nonce: 0n,
         maxSlot: 0n,
-        ephemeralSignerBumps: new Uint8Array(),
+        ephemeralSignerBumps: Uint8Array.of(255),
         innerHash: new Uint8Array(33),
         deployment: DEPLOYMENT,
       }),

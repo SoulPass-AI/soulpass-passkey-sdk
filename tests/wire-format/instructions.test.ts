@@ -17,6 +17,9 @@ import { describe, it, expect } from 'vitest'
 import { Keypair } from '@solana/web3.js'
 import { bytesToHex as hex, hexToBytes } from '@noble/hashes/utils'
 import {
+  ADD_AUTHORITY_ACCOUNTS,
+  EXECUTE_ACCOUNTS,
+  REMOVE_AUTHORITY_ACCOUNTS,
   CLOSE_SESSION_ACCOUNTS,
   CLOSE_WALLET_ACCOUNTS,
   CREATE_WALLET_ACCOUNTS,
@@ -183,6 +186,14 @@ describe('builders pinned to the decoder lengths', () => {
     expect(view(d).getBigUint64(36, true)).toBe(7n)
   })
 
+  it('AddAuthority carries the newThreshold the owners signed (default 0)', () => {
+    const d = buildAddAuthorityIxData({ newSigScheme: 0, newPubkey: pk33, maxSlot: 7n, newThreshold: 2 })
+    expect(d[35]).toBe(2)
+    expect(() => buildAddAuthorityIxData({ newSigScheme: 0, newPubkey: pk33, maxSlot: 7n, newThreshold: 256 })).toThrow(
+      RangeError,
+    )
+  })
+
   it('RemoveAuthority: [10] sig_scheme pubkey(33) new_threshold max_slot = 44 B', () => {
     const d = buildRemoveAuthorityIxData({ sigScheme: 2, pubkey: pk33, newThreshold: 3, maxSlot: 7n })
     expect(d).toHaveLength(44)
@@ -243,12 +254,16 @@ describe('buildSessionExecuteIxData', () => {
 describe('account tables', () => {
   it('match the program handlers', () => {
     expect(GOVERNED_ACCOUNTS).toEqual(['instructions_sysvar', 'wallet (w)', 'fee_payer (s)'])
+    // add_authority.rs / remove_authority.rs read the System Program at accounts[3].
+    expect(ADD_AUTHORITY_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'system_program'])
+    expect(REMOVE_AUTHORITY_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'system_program'])
+    expect(EXECUTE_ACCOUNTS).toEqual(['instructions_sysvar', 'wallet (w)', 'fee_payer (s)', 'vault (w)', '…remaining'])
     expect(REVOKE_SESSION_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'session (w)'])
     expect(OWNER_CLOSE_SESSION_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'session (w)', 'destination (w) = rent_payer'])
     expect(CLOSE_SESSION_ACCOUNTS).toEqual(['session (w)', 'authority (s)', 'destination (w) = rent_payer'])
     expect(SELF_REVOKE_SESSION_ACCOUNTS).toEqual(['session (w)', 'authority (s)'])
-    expect(CLOSE_WALLET_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'vault', 'destination (w)', 'system_program'])
+    expect(CLOSE_WALLET_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'vault (w)', 'destination (w)', 'system_program'])
     expect(CREATE_WALLET_ACCOUNTS).toEqual(['instructions_sysvar', 'payer (s)', 'wallet (w)', 'system_program'])
-    expect(SESSION_EXECUTE_ACCOUNTS).toEqual(['session', 'wallet', 'authority (s)', 'vault', '…remaining'])
+    expect(SESSION_EXECUTE_ACCOUNTS).toEqual(['session (w)', 'wallet', 'authority (s)', 'vault (w)', '…remaining'])
   })
 })

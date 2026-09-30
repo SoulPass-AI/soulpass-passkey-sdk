@@ -63,12 +63,17 @@ function keyThresholdMaxSlot(
 
 /**
  * The shared prefix of every authority-governed instruction
- * (`processor/mod.rs`): AdvanceNonce (3), AddAuthority (9), RemoveAuthority
- * (10), SetThreshold (11), RotateRoot (17), ProposeRecovery (20),
- * CancelRecovery (21), ExecuteRecovery (22), BumpEpoch (23),
- * SetRecoveryThreshold (24) use exactly these three.
+ * (`processor/mod.rs::load_governed`). AdvanceNonce (3), SetThreshold (11),
+ * RotateRoot (17), ProposeRecovery (20), CancelRecovery (21),
+ * ExecuteRecovery (22), BumpEpoch (23) and SetRecoveryThreshold (24) use
+ * exactly these three; AddAuthority (9) and RemoveAuthority (10) append the
+ * System Program ({@link ADD_AUTHORITY_ACCOUNTS}, {@link REMOVE_AUTHORITY_ACCOUNTS}).
  */
 export const GOVERNED_ACCOUNTS = ['instructions_sysvar', 'wallet (w)', 'fee_payer (s)'] as const;
+/** AddAuthority (9), `add_authority.rs`: the System Program at index 3 (the wallet account grows). */
+export const ADD_AUTHORITY_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'system_program'] as const;
+/** RemoveAuthority (10), `remove_authority.rs`: the System Program at index 3 (the wallet account shrinks). */
+export const REMOVE_AUTHORITY_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'system_program'] as const;
 /** RevokeSession (6), `revoke_session.rs`. */
 export const REVOKE_SESSION_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'session (w)'] as const;
 /**
@@ -81,14 +86,21 @@ export const CLOSE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)', 'destinat
 /** SelfRevokeSession (7), `self_revoke_session.rs`; signed by the session key. */
 export const SELF_REVOKE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)'] as const;
 /** CloseWallet (2), `close_wallet.rs`. */
-export const CLOSE_WALLET_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'vault', 'destination (w)', 'system_program'] as const;
+export const CLOSE_WALLET_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'vault (w)', 'destination (w)', 'system_program'] as const;
 /** CreateWallet (0), `create_wallet.rs`. */
 export const CREATE_WALLET_ACCOUNTS = ['instructions_sysvar', 'payer (s)', 'wallet (w)', 'system_program'] as const;
 /**
- * SessionExecute (5), `session_execute.rs`: `authority` is the session key;
- * the de-duplicated remaining accounts (`encodeRemainingAccounts`) follow.
+ * Execute (1) and ExecuteWithEphemeralSigners (16), `execute.rs`: the
+ * de-duplicated remaining accounts (`encodeRemainingAccounts`) follow, in the
+ * order their `index` bytes name them.
  */
-export const SESSION_EXECUTE_ACCOUNTS = ['session', 'wallet', 'authority (s)', 'vault', '…remaining'] as const;
+export const EXECUTE_ACCOUNTS = ['instructions_sysvar', 'wallet (w)', 'fee_payer (s)', 'vault (w)', '…remaining'] as const;
+/**
+ * SessionExecute (5), `session_execute.rs`: `authority` is the session key;
+ * the wallet is read-only; the de-duplicated remaining accounts
+ * (`encodeRemainingAccounts`) follow.
+ */
+export const SESSION_EXECUTE_ACCOUNTS = ['session (w)', 'wallet', 'authority (s)', 'vault (w)', '…remaining'] as const;
 
 // ── Builders ──────────────────────────────────────────────────────────────
 
@@ -148,21 +160,33 @@ export function buildCloseSessionIxData(): Uint8Array {
 
 /**
  * AddAuthority (9): `[9] || new_sig_scheme || new_pubkey(33) || new_threshold || max_slot` — 44 B.
+ * Accounts: {@link ADD_AUTHORITY_ACCOUNTS}.
  *
- * `new_threshold` is always written as 0: the program accepts only 0 or the
- * current threshold (`validate_new_threshold`), both meaning "unchanged".
- * The owners' `computeAddAuthorityMessage` must then be signed with
- * `newThreshold: 0` too, since the handler hashes the byte it decoded.
+ * `newThreshold` defaults to 0. The program accepts only 0 or the current
+ * threshold (`validate_new_threshold`), both meaning "unchanged". The handler
+ * hashes the byte it decoded, so this value MUST equal the `newThreshold` the
+ * owners signed in `computeAddAuthorityMessage` — a ceremony signed with the
+ * current threshold (as the Swift SDK does) needs that same value here.
  */
 export function buildAddAuthorityIxData(args: {
   newSigScheme: number;
   newPubkey: Uint8Array;
   maxSlot: bigint;
+  newThreshold?: number;
 }): Uint8Array {
-  return keyThresholdMaxSlot(MachineWalletDisc.AddAuthority, args.newSigScheme, args.newPubkey, 0, args.maxSlot);
+  return keyThresholdMaxSlot(
+    MachineWalletDisc.AddAuthority,
+    args.newSigScheme,
+    args.newPubkey,
+    args.newThreshold ?? 0,
+    args.maxSlot,
+  );
 }
 
-/** RemoveAuthority (10): `[10] || sig_scheme || pubkey(33) || new_threshold || max_slot` — 44 B. */
+/**
+ * RemoveAuthority (10): `[10] || sig_scheme || pubkey(33) || new_threshold || max_slot` — 44 B.
+ * Accounts: {@link REMOVE_AUTHORITY_ACCOUNTS}.
+ */
 export function buildRemoveAuthorityIxData(
   args: AuthorityKeyOperand & { newThreshold: number; maxSlot: bigint },
 ): Uint8Array {

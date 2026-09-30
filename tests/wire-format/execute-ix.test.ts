@@ -196,14 +196,16 @@ describe('buildExecuteIxData', () => {
   })
 
   it('rejects > 255 unique accounts (u8 index ceiling)', () => {
-    // Pre-build 257 accounts; encodeRemainingAccounts gives us indices 0..256.
-    // 256 is the boundary that breaks `index <= 0xff`.
-    const programs: PublicKey[] = Array.from({ length: 257 }, () => Keypair.generate().publicKey)
-    const innerOverflow: InnerInstruction[] = programs.map((p, idx) => ({
-      programId: p.toBase58(),
-      accounts: idx === 256 ? [{ pubkey: p.toBase58(), isWritable: false }] : [],
-      data: new Uint8Array(),
-    }))
+    // One inner ix over 257 distinct accounts: encodeRemainingAccounts gives
+    // indices 0..257 (program first); 256 is the boundary that breaks `index <= 0xff`.
+    const accounts: PublicKey[] = Array.from({ length: 257 }, () => Keypair.generate().publicKey)
+    const innerOverflow: InnerInstruction[] = [
+      {
+        programId: Keypair.generate().publicKey.toBase58(),
+        accounts: accounts.map((a) => ({ pubkey: a.toBase58(), isWritable: false })),
+        data: new Uint8Array(),
+      },
+    ]
     const remaining = encodeRemainingAccounts(innerOverflow)
     expect(() =>
       buildExecuteIxData({
@@ -212,5 +214,22 @@ describe('buildExecuteIxData', () => {
         remainingAccounts: remaining,
       }),
     ).toThrow(/exceeds u8/)
+  })
+
+  it('rejects an empty inner list and more than MAX_INNER_INSTRUCTIONS (64)', () => {
+    const one: InnerInstruction = {
+      programId: Keypair.generate().publicKey.toBase58(),
+      accounts: [],
+      data: new Uint8Array(),
+    }
+    const build = (innerInstructions: InnerInstruction[]) =>
+      buildExecuteIxData({
+        maxSlot: 0n,
+        innerInstructions,
+        remainingAccounts: encodeRemainingAccounts(innerInstructions),
+      })
+    expect(() => build([])).toThrow(RangeError)
+    expect(() => build(Array(65).fill(one))).toThrow(RangeError)
+    expect(() => build(Array(64).fill(one))).not.toThrow()
   })
 })
