@@ -1,0 +1,228 @@
+/**
+ * Instruction `data` builders for every MachineWallet instruction not covered
+ * by `execute-ix.ts` (Execute, ExecuteWithEphemeralSigners,
+ * ProvideWebAuthnEvidence) or `session.ts` (CreateSession), plus the account
+ * order of each handler.
+ *
+ * Mirrors the decoders in `machine-wallet/program/src/instruction.rs`
+ * byte-for-byte; the decoder checks exact lengths, so a wrong width here is a
+ * rejected transaction, not a misread. Root / recovery / epoch layouts are
+ * pinned against `tests/fixtures/layout_kat.json`.
+ *
+ * Like `execute-ix.ts`, these return bytes only: `keys` and `programId` are
+ * the caller's. The `*_ACCOUNTS` tables name the account order the handler
+ * reads (`(w)` writable, `(s)` signer).
+ */
+
+import { concatBytes, requireByte, requireLength, u64LE } from './_bytes';
+import { MachineWalletDisc } from './disc';
+import { encodeInnerInstructions, type RemainingAccount } from './execute-ix';
+import type { InnerInstruction } from './inner-hash';
+import type { AuthorityKeyOperand } from './authority-messages';
+
+const disc = (d: number): Uint8Array => Uint8Array.of(d);
+
+/** `[disc] || max_slot(u64 LE)` — the 9-byte form. */
+function maxSlotOnly(d: number, maxSlot: bigint): Uint8Array {
+  return concatBytes([disc(d), u64LE(maxSlot)]);
+}
+
+/** `[disc] || max_slot || sig_scheme(1) || pubkey(33)` — 43 bytes. */
+function maxSlotKey(d: number, maxSlot: bigint, sigScheme: number, pubkey: Uint8Array, label: string): Uint8Array {
+  return concatBytes([
+    disc(d),
+    u64LE(maxSlot),
+    requireByte(sigScheme, `${label} sigScheme`),
+    requireLength(pubkey, 33, `${label} pubkey`),
+  ]);
+}
+
+/** `[disc] || max_slot || session_authority(32)` — 41 bytes. */
+function maxSlotSession(d: number, maxSlot: bigint, sessionAuthority: Uint8Array): Uint8Array {
+  return concatBytes([disc(d), u64LE(maxSlot), requireLength(sessionAuthority, 32, 'sessionAuthority')]);
+}
+
+/** `[disc] || sig_scheme(1) || pubkey(33) || new_threshold(1) || max_slot` — 44 bytes. */
+function keyThresholdMaxSlot(
+  d: number,
+  sigScheme: number,
+  pubkey: Uint8Array,
+  newThreshold: number,
+  maxSlot: bigint,
+): Uint8Array {
+  return concatBytes([
+    disc(d),
+    requireByte(sigScheme, 'sigScheme'),
+    requireLength(pubkey, 33, 'pubkey'),
+    requireByte(newThreshold, 'newThreshold'),
+    u64LE(maxSlot),
+  ]);
+}
+
+// ── Account tables ────────────────────────────────────────────────────────
+
+/**
+ * The shared prefix of every authority-governed instruction
+ * (`processor/mod.rs`): AdvanceNonce (3), AddAuthority (9), RemoveAuthority
+ * (10), SetThreshold (11), RotateRoot (17), ProposeRecovery (20),
+ * CancelRecovery (21), ExecuteRecovery (22), BumpEpoch (23),
+ * SetRecoveryThreshold (24) use exactly these three.
+ */
+export const GOVERNED_ACCOUNTS = ['instructions_sysvar', 'wallet (w)', 'fee_payer (s)'] as const;
+/** RevokeSession (6), `revoke_session.rs`. */
+export const REVOKE_SESSION_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'session (w)'] as const;
+/** OwnerCloseSession (12), `owner_close_session.rs`; rent goes to the session's recorded rent payer. */
+export const OWNER_CLOSE_SESSION_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'session (w)', 'rent_payer (w)'] as const;
+/** CloseSession (8), `close_session.rs`; signed by the session key. */
+export const CLOSE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)', 'rent_payer (w)'] as const;
+/** SelfRevokeSession (7), `self_revoke_session.rs`; signed by the session key. */
+export const SELF_REVOKE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)'] as const;
+/** CloseWallet (2), `close_wallet.rs`. */
+export const CLOSE_WALLET_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'vault', 'destination (w)', 'system_program'] as const;
+/** CreateWallet (0), `create_wallet.rs`. */
+export const CREATE_WALLET_ACCOUNTS = ['instructions_sysvar', 'payer (s)', 'wallet (w)', 'system_program'] as const;
+/**
+ * SessionExecute (5), `session_execute.rs`: `authority` is the session key;
+ * the de-duplicated remaining accounts (`encodeRemainingAccounts`) follow.
+ */
+export const SESSION_EXECUTE_ACCOUNTS = ['session', 'wallet', 'authority (s)', 'vault', '…remaining'] as const;
+
+// ── Builders ──────────────────────────────────────────────────────────────
+
+/** CreateWallet (0): `[0] || max_slot || sig_scheme(1) || authority(33)` — 43 B. */
+export function buildCreateWalletIxData(args: {
+  maxSlot: bigint;
+  sigScheme: number;
+  /** 33 bytes (an Ed25519 key is 32 bytes + one 0x00 pad). */
+  authority: Uint8Array;
+}): Uint8Array {
+  return maxSlotKey(MachineWalletDisc.CreateWallet, args.maxSlot, args.sigScheme, args.authority, 'authority');
+}
+
+/** CloseWallet (2): `[2] || max_slot || destination(32)` — 41 B. */
+export function buildCloseWalletIxData(args: { maxSlot: bigint; destination: Uint8Array }): Uint8Array {
+  return concatBytes([
+    disc(MachineWalletDisc.CloseWallet),
+    u64LE(args.maxSlot),
+    requireLength(args.destination, 32, 'destination'),
+  ]);
+}
+
+/** AdvanceNonce (3): `[3] || max_slot` — 9 B. Accounts: {@link GOVERNED_ACCOUNTS}. */
+export function buildAdvanceNonceIxData(args: { maxSlot: bigint }): Uint8Array {
+  return maxSlotOnly(MachineWalletDisc.AdvanceNonce, args.maxSlot);
+}
+
+/**
+ * SessionExecute (5): `[5] || inner_count(u32 LE) || inner ixs` — the same
+ * inner encoding as Execute, with no max_slot (the session key signs the
+ * transaction itself). Pass the same `remainingAccounts` as the ix keys tail.
+ */
+export function buildSessionExecuteIxData(args: {
+  innerInstructions: ReadonlyArray<InnerInstruction>;
+  remainingAccounts: ReadonlyArray<RemainingAccount>;
+}): Uint8Array {
+  return concatBytes([
+    disc(MachineWalletDisc.SessionExecute),
+    encodeInnerInstructions(args.innerInstructions, args.remainingAccounts),
+  ]);
+}
+
+/** RevokeSession (6): `[6] || max_slot || session_authority(32)` — 41 B. */
+export function buildRevokeSessionIxData(args: { maxSlot: bigint; sessionAuthority: Uint8Array }): Uint8Array {
+  return maxSlotSession(MachineWalletDisc.RevokeSession, args.maxSlot, args.sessionAuthority);
+}
+
+/** SelfRevokeSession (7): `[7]`. */
+export function buildSelfRevokeSessionIxData(): Uint8Array {
+  return disc(MachineWalletDisc.SelfRevokeSession);
+}
+
+/** CloseSession (8): `[8]`. */
+export function buildCloseSessionIxData(): Uint8Array {
+  return disc(MachineWalletDisc.CloseSession);
+}
+
+/**
+ * AddAuthority (9): `[9] || new_sig_scheme || new_pubkey(33) || new_threshold || max_slot` — 44 B.
+ *
+ * `new_threshold` is always written as 0: the program accepts only 0 or the
+ * current threshold (`validate_new_threshold`), both meaning "unchanged".
+ * The owners' `computeAddAuthorityMessage` must then be signed with
+ * `newThreshold: 0` too, since the handler hashes the byte it decoded.
+ */
+export function buildAddAuthorityIxData(args: {
+  newSigScheme: number;
+  newPubkey: Uint8Array;
+  maxSlot: bigint;
+}): Uint8Array {
+  return keyThresholdMaxSlot(MachineWalletDisc.AddAuthority, args.newSigScheme, args.newPubkey, 0, args.maxSlot);
+}
+
+/** RemoveAuthority (10): `[10] || sig_scheme || pubkey(33) || new_threshold || max_slot` — 44 B. */
+export function buildRemoveAuthorityIxData(
+  args: AuthorityKeyOperand & { newThreshold: number; maxSlot: bigint },
+): Uint8Array {
+  return keyThresholdMaxSlot(
+    MachineWalletDisc.RemoveAuthority,
+    args.sigScheme,
+    args.pubkey,
+    args.newThreshold,
+    args.maxSlot,
+  );
+}
+
+/** SetThreshold (11): `[11] || new_threshold || max_slot` — 10 B. */
+export function buildSetThresholdIxData(args: { newThreshold: number; maxSlot: bigint }): Uint8Array {
+  return concatBytes([
+    disc(MachineWalletDisc.SetThreshold),
+    requireByte(args.newThreshold, 'newThreshold'),
+    u64LE(args.maxSlot),
+  ]);
+}
+
+/** OwnerCloseSession (12): `[12] || max_slot || session_authority(32)` — 41 B. */
+export function buildOwnerCloseSessionIxData(args: { maxSlot: bigint; sessionAuthority: Uint8Array }): Uint8Array {
+  return maxSlotSession(MachineWalletDisc.OwnerCloseSession, args.maxSlot, args.sessionAuthority);
+}
+
+/**
+ * RotateRoot (17): `[17] || max_slot || new_root_sig_scheme || new_root_pubkey(33)` — 43 B.
+ * The new root must already be a registered authority; signed by the current root.
+ */
+export function buildRotateRootIxData(args: {
+  maxSlot: bigint;
+  newRootSigScheme: number;
+  newRootPubkey: Uint8Array;
+}): Uint8Array {
+  return maxSlotKey(MachineWalletDisc.RotateRoot, args.maxSlot, args.newRootSigScheme, args.newRootPubkey, 'newRoot');
+}
+
+/** ProposeRecovery (20): `[20] || max_slot || sig_scheme || pubkey(33)` — 43 B (the proposed root). */
+export function buildProposeRecoveryIxData(args: AuthorityKeyOperand & { maxSlot: bigint }): Uint8Array {
+  return maxSlotKey(MachineWalletDisc.ProposeRecovery, args.maxSlot, args.sigScheme, args.pubkey, 'proposed root');
+}
+
+/** CancelRecovery (21): `[21] || max_slot` — 9 B. */
+export function buildCancelRecoveryIxData(args: { maxSlot: bigint }): Uint8Array {
+  return maxSlotOnly(MachineWalletDisc.CancelRecovery, args.maxSlot);
+}
+
+/** ExecuteRecovery (22): `[22] || max_slot` — 9 B. */
+export function buildExecuteRecoveryIxData(args: { maxSlot: bigint }): Uint8Array {
+  return maxSlotOnly(MachineWalletDisc.ExecuteRecovery, args.maxSlot);
+}
+
+/** BumpEpoch (23): `[23] || max_slot` — 9 B. */
+export function buildBumpEpochIxData(args: { maxSlot: bigint }): Uint8Array {
+  return maxSlotOnly(MachineWalletDisc.BumpEpoch, args.maxSlot);
+}
+
+/** SetRecoveryThreshold (24): `[24] || recovery_threshold || max_slot` — 10 B (threshold first). */
+export function buildSetRecoveryThresholdIxData(args: { recoveryThreshold: number; maxSlot: bigint }): Uint8Array {
+  return concatBytes([
+    disc(MachineWalletDisc.SetRecoveryThreshold),
+    requireByte(args.recoveryThreshold, 'recoveryThreshold'),
+    u64LE(args.maxSlot),
+  ]);
+}

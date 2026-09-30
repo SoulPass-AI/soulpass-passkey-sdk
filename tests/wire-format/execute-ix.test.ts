@@ -161,6 +161,21 @@ describe('buildExecuteIxData', () => {
     expect(view.getUint32(10 + bumps.length, true)).toBe(1)
   })
 
+  it('disc=16 takes 1..=4 bumps: num_ephemeral 0 and 5 throw (TooManyEphemeralSigners on chain)', () => {
+    const remaining = encodeRemainingAccounts(inner)
+    const build = (bumps: Uint8Array) =>
+      buildExecuteIxData({
+        maxSlot: 42n,
+        innerInstructions: inner,
+        remainingAccounts: remaining,
+        ephemeralSignerBumps: bumps,
+      })
+    expect(() => build(new Uint8Array(0))).toThrow(RangeError)
+    expect(() => build(new Uint8Array(5).fill(255))).toThrow(RangeError)
+    expect(build(new Uint8Array(1).fill(255))[9]).toBe(1)
+    expect(build(new Uint8Array(4).fill(255))[9]).toBe(4)
+  })
+
   it('rejects inner-ix referencing an account missing from remainingAccounts', () => {
     const stray = Keypair.generate().publicKey
     const innerWithStray: InnerInstruction[] = [

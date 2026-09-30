@@ -48,7 +48,7 @@ export {
 export type { MachineWalletState, SigSchemeValue, WalletAuthoritySlot } from './wallet-state'
 
 // ── MachineWallet wire format (single source of truth for popup + contract) ──
-export { MachineWalletDisc } from './wire-format/disc'
+export { MachineWalletDisc, REJECTED_DISCS } from './wire-format/disc'
 export type { MachineWalletDiscValue } from './wire-format/disc'
 export {
   FLAG_WRITABLE,
@@ -116,6 +116,33 @@ export {
   encodeRemainingAccounts,
 } from './wire-format/execute-ix'
 export type { RemainingAccount } from './wire-format/execute-ix'
+export {
+  GOVERNED_ACCOUNTS,
+  REVOKE_SESSION_ACCOUNTS,
+  OWNER_CLOSE_SESSION_ACCOUNTS,
+  CLOSE_SESSION_ACCOUNTS,
+  SELF_REVOKE_SESSION_ACCOUNTS,
+  CLOSE_WALLET_ACCOUNTS,
+  CREATE_WALLET_ACCOUNTS,
+  SESSION_EXECUTE_ACCOUNTS,
+  buildCreateWalletIxData,
+  buildCloseWalletIxData,
+  buildAdvanceNonceIxData,
+  buildSessionExecuteIxData,
+  buildRevokeSessionIxData,
+  buildSelfRevokeSessionIxData,
+  buildCloseSessionIxData,
+  buildAddAuthorityIxData,
+  buildRemoveAuthorityIxData,
+  buildSetThresholdIxData,
+  buildOwnerCloseSessionIxData,
+  buildRotateRootIxData,
+  buildProposeRecoveryIxData,
+  buildCancelRecoveryIxData,
+  buildExecuteRecoveryIxData,
+  buildBumpEpochIxData,
+  buildSetRecoveryThresholdIxData,
+} from './wire-format/instructions'
 export {
   CASH_MINT_POLICY_WIRE_LEN,
   CREATE_SESSION_ACCOUNTS,

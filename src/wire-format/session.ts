@@ -15,12 +15,10 @@
 import { keccak_256 } from '@noble/hashes/sha3';
 import { concatBytes, requireByte, requireLength, u64LE } from './_bytes';
 import { MAX_ALLOWED_PROGRAMS, MAX_CASH_MINTS, NATIVE_SOL_MINT, SESSION_FLAGS_KNOWN } from './constants';
+import { MachineWalletDisc } from './disc';
 import type { MachineWalletErrorName } from './errors';
 
 export { computeCreateSessionMessage } from './authority-messages';
-
-/** `instruction.rs` CreateSession discriminator. */
-const CREATE_SESSION_DISC = 4;
 
 /** On-chain `CashMintPolicy::WIRE_LEN`. */
 export const CASH_MINT_POLICY_WIRE_LEN = 64;
@@ -173,7 +171,7 @@ export function hashSessionData(p: SessionParams): Uint8Array {
  * Accounts: {@link CREATE_SESSION_ACCOUNTS}.
  */
 export function buildCreateSessionIxData(maxSlot: bigint, p: SessionParams): Uint8Array {
-  return concatBytes([Uint8Array.of(CREATE_SESSION_DISC), u64LE(maxSlot), ...sessionFields(p)]);
+  return concatBytes([Uint8Array.of(MachineWalletDisc.CreateSession), u64LE(maxSlot), ...sessionFields(p)]);
 }
 
 /**

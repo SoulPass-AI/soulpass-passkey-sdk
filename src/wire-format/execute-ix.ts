@@ -9,9 +9,10 @@
 
 import { MachineWalletDisc } from './disc';
 import { MAX_CLIENT_DATA_JSON_SIZE } from './webauthn';
+import { MAX_EPHEMERAL_SIGNERS } from './constants';
 import type { InnerInstruction } from './inner-hash';
 import { accountFlags } from './inner-hash';
-import { u16LE, u32LE, u64LE, concatBytes, requireByte } from './_bytes';
+import { u16LE, u32LE, u64LE, concatBytes } from './_bytes';
 import { PublicKey } from '@solana/web3.js';
 
 /**
@@ -43,8 +44,8 @@ export function buildEvidenceIxData(clientDataJSON: Uint8Array): Uint8Array {
 
 /**
  * Build the data blob for `Execute` (disc=1) or `ExecuteWithEphemeralSigners`
- * (disc=16). Picks the format from whether `ephemeralSignerBumps` is provided
- * and non-empty.
+ * (disc=16). Picks the format from whether `ephemeralSignerBumps` is provided;
+ * when provided it must hold 1..=`MAX_EPHEMERAL_SIGNERS` (4) bumps.
  *
  * Layouts (mirrors `instruction.rs::Execute::deserialize` and `::ExecuteWithEphemeralSigners::deserialize`):
  *
@@ -80,20 +81,51 @@ export function buildExecuteIxData(args: {
    */
   remainingAccounts: ReadonlyArray<RemainingAccount>;
   /**
-   * Per-call ephemeral signer bumps. Non-empty switches to disc=16; the same
+   * Per-call ephemeral signer bumps (1..=4). Present switches to disc=16; the same
    * bumps must have fed `computeExecuteEphemeralMessage` so the operation_hash the
    * authenticator signed matches what the chain recomputes.
    */
   ephemeralSignerBumps?: Uint8Array;
 }): Uint8Array {
   const { maxSlot, innerInstructions, remainingAccounts, ephemeralSignerBumps } = args;
+  const tail = encodeInnerInstructions(innerInstructions, remainingAccounts);
 
+  if (ephemeralSignerBumps === undefined) {
+    return concatBytes([Uint8Array.of(MachineWalletDisc.Execute), u64LE(maxSlot), tail]);
+  }
+  // The decoder rejects num_ephemeral 0 or > MAX_EPHEMERAL_SIGNERS
+  // (TooManyEphemeralSigners); an empty list is a caller bug, not a request
+  // for disc=1 — omit the field for that.
+  const n = ephemeralSignerBumps.length;
+  if (n < 1 || n > MAX_EPHEMERAL_SIGNERS) {
+    throw new RangeError(
+      `ephemeralSignerBumps must hold 1..=${MAX_EPHEMERAL_SIGNERS} bumps, got ${n}`,
+    );
+  }
+  return concatBytes([
+    Uint8Array.of(MachineWalletDisc.ExecuteWithEphemeralSigners),
+    u64LE(maxSlot),
+    Uint8Array.of(n),
+    ephemeralSignerBumps,
+    tail,
+  ]);
+}
+
+/**
+ * `inner_count(u32 LE) || encoded inner ixs` — the tail shared by Execute,
+ * ExecuteWithEphemeralSigners and SessionExecute (`parse_inner_instructions`).
+ * Internal to `wire-format/`.
+ */
+export function encodeInnerInstructions(
+  innerInstructions: ReadonlyArray<InnerInstruction>,
+  remainingAccounts: ReadonlyArray<RemainingAccount>,
+): Uint8Array {
   const indexByPubkey = new Map<string, number>();
   for (let i = 0; i < remainingAccounts.length; i++) {
     indexByPubkey.set(remainingAccounts[i].pubkey.toBase58(), i);
   }
 
-  const encodedParts: Uint8Array[] = [];
+  const encodedParts: Uint8Array[] = [u32LE(innerInstructions.length)];
   for (const ix of innerInstructions) {
     const programIdBytes = new PublicKey(ix.programId).toBytes();
 
@@ -124,29 +156,7 @@ export function buildExecuteIxData(args: {
     encodedParts.push(accountEntries);
     encodedParts.push(ix.data);
   }
-
-  const bumps =
-    ephemeralSignerBumps && ephemeralSignerBumps.length > 0
-      ? ephemeralSignerBumps
-      : undefined;
-
-  const head: Uint8Array[] = bumps
-    ? [
-        Uint8Array.of(MachineWalletDisc.ExecuteWithEphemeralSigners),
-        u64LE(maxSlot),
-        // The u8 length prefix caps bumps at 255 — well above the on-chain
-        // MAX_EPHEMERAL_SIGNERS; requireByte throws rather than truncating.
-        requireByte(bumps.length, 'ephemeralSignerBumps length'),
-        bumps,
-        u32LE(innerInstructions.length),
-      ]
-    : [
-        Uint8Array.of(MachineWalletDisc.Execute),
-        u64LE(maxSlot),
-        u32LE(innerInstructions.length),
-      ];
-
-  return concatBytes([...head, ...encodedParts]);
+  return concatBytes(encodedParts);
 }
 
 /**
