@@ -1,12 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { Keypair } from '@solana/web3.js'
 import type { AccountInfo, Connection, PublicKey } from '@solana/web3.js'
-import {
-  V1_OFFSET,
-  V1_MIN_ACCOUNT_SIZE,
-  SigScheme,
-  predictNextExecuteNonce,
-} from '../src/wallet-state'
+import { SigScheme, predictNextExecuteNonce, walletAccountSize } from '../src/wallet-state'
 
 /**
  * Stub Connection: only `getAccountInfo` is exercised, so we accept the
@@ -21,15 +16,25 @@ function makeConnection(
   } as unknown as Connection
 }
 
-// Build a synthetic v1 account body that survives parseWalletState's full
-// validation. Filler is `0xAA` so a mis-aligned read surfaces as a wrong value
-// rather than a coincidental zero.
-function makeAccountBody(nonce: bigint, totalLen = V1_MIN_ACCOUNT_SIZE): Buffer {
-  const buf = Buffer.alloc(totalLen, 0xaa)
-  buf[V1_OFFSET.VERSION] = 1
-  buf[V1_OFFSET.AUTHORITY_COUNT] = 1
-  buf.writeBigUInt64LE(nonce, V1_OFFSET.NONCE)
-  buf[V1_OFFSET.AUTHORITY_SLOTS_START] = SigScheme.Webauthn
+// Build a synthetic single-authority 'W' account (170-byte header + one slot)
+// that survives parseWalletState's full validation. Filler is `0xAA` so a
+// mis-aligned read surfaces as a wrong value rather than a coincidental zero;
+// only the fields the decoder checks are set (offsets from `state.rs`).
+function makeAccountBody(nonce: bigint): Buffer {
+  const buf = Buffer.alloc(walletAccountSize(1), 0xaa)
+  buf[0] = 0x57 // 'W'
+  buf[34] = 1 // threshold
+  buf[35] = 1 // authority_count
+  buf.writeBigUInt64LE(nonce, 36)
+  // root (53) and authority 0 (170): the same WebAuthn key.
+  for (const off of [53, 170]) {
+    buf[off] = SigScheme.Webauthn
+    buf[off + 1] = 0x02
+  }
+  // pending_root (95) EMPTY: 0xFF || 33 zero bytes, recovery_eta (129) = 0.
+  buf[95] = 0xff
+  buf.fill(0, 96, 137)
+  buf[169] = 0 // recovery_threshold
   return buf
 }
 
@@ -66,12 +71,12 @@ describe('predictNextExecuteNonce', () => {
     expect(await predictNextExecuteNonce(connection, walletAddress)).toBe(max)
   })
 
-  it('throws when the account exists but is too short for v1', async () => {
-    // Below `V1_MIN_ACCOUNT_SIZE`. Contract is "missing ⇒ 0n, malformed ⇒
-    // throw"; this asserts the second branch doesn't silently degrade into
-    // the first.
+  it('throws when the account exists but is too short', async () => {
+    // One byte short of a one-authority wallet. Contract is "missing ⇒ 0n,
+    // malformed ⇒ throw"; this asserts the second branch doesn't silently
+    // degrade into the first.
     const connection = makeConnection(async () => ({
-      data: Buffer.alloc(V1_MIN_ACCOUNT_SIZE - 1, 0xaa),
+      data: makeAccountBody(0n).subarray(0, walletAccountSize(1) - 1),
       owner: walletAddress,
       executable: false,
       lamports: 0,

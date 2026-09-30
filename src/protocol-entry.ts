@@ -34,17 +34,12 @@ export {
   parseWalletState,
   getWalletState,
   WalletNotDeployedError,
-  V1_OFFSET,
-  V1_HEADER_SIZE,
-  V1_MIN_ACCOUNT_SIZE,
-  WALLET_LAYOUT_V1,
-  WALLET_LAYOUT_V2,
   walletAccountSize,
-  AUTHORITY_SLOT_SIZE,
   AUTHORITY_PUBKEY_SIZE,
   SigScheme,
   effectiveAuthorityKey,
 } from './wallet-state'
+export { AUTHORITY_SLOT_SIZE } from './wire-format/constants'
 export type { MachineWalletState, SigSchemeValue, WalletAuthoritySlot } from './wallet-state'
 
 // ── MachineWallet wire format (single source of truth for popup + contract) ──

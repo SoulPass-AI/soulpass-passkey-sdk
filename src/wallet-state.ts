@@ -1,43 +1,49 @@
 /**
- * Off-chain reader for the MachineWallet account body (layout v1 and v2).
+ * Off-chain reader for the MachineWallet account (`'W'` tag, 170-byte header).
  *
  * Lives here (not in `ephemeral-signers.ts`) because the byte layout is an
  * on-chain implementation detail of `machine-wallet`, while ephemeral-signer
- * derivation is the public Squads-v4-style protocol layered on top. Future
- * SDK additions that consume other fields (e.g. `creation_slot` for a
- * sponsored Execute preflight) belong here too.
+ * derivation is the public Squads-v4-style protocol layered on top.
  *
- * **Why the dApp doesn't read the account directly:** the byte offset and
+ * **Why the dApp doesn't read the account directly:** the byte offsets and
  * the "missing account ⇒ default 0n" contract (documented below) are both
  * on-chain invariants that change with `state.rs`. Routing through this
- * module makes a layout bump a single-PR rollout — bump SDK minor, every
- * consumer follows on `npm update`. The previous in-dApp `NONCE_OFFSET = 36`
- * literal had no such cross-cutting fixup path.
+ * module makes a layout change a single-PR rollout — bump the SDK, every
+ * consumer follows on `npm update`.
  */
 
 import type { Connection } from '@solana/web3.js'
 import type { StatePda, StatePdaKey } from './types'
+import {
+  AUTHORITY_SLOT_SIZE,
+  MAX_AUTHORITIES,
+  WALLET_ACCOUNT_TAG,
+  WALLET_HEADER_SIZE,
+} from './wire-format/constants'
 
 /**
- * v1 MachineWallet header layout (53 bytes, fixed):
+ * `MachineWallet` header offsets (`state.rs`), all integers LE:
  *
- * | range   | field           | type            |
- * |---------|-----------------|-----------------|
- * | 0..1    | version         | u8 (= 1)        |
- * | 1..2    | bump            | u8              |
- * | 2..34   | wallet_id       | [u8; 32]        |
- * | 34..35  | threshold       | u8              |
- * | 35..36  | authority_count | u8              |
- * | 36..44  | nonce           | u64 LE          |
- * | 44..52  | creation_slot   | u64 LE          |
- * | 52..53  | vault_bump      | u8              |
- *
- * Authority slots (34 bytes each: `sig_scheme(1) || pubkey(33)`) follow the
- * header. The set of offset / size constants below mirrors
- * `machine-wallet/program/src/state.rs::MachineWallet` byte-for-byte.
+ * | offset | field              | type          |
+ * |--------|--------------------|---------------|
+ * | 0      | tag                | u8 (= 'W')    |
+ * | 1      | bump               | u8            |
+ * | 2      | wallet_id          | [u8; 32]      |
+ * | 34     | threshold          | u8            |
+ * | 35     | authority_count    | u8            |
+ * | 36     | nonce              | u64           |
+ * | 44     | creation_slot      | u64           |
+ * | 52     | vault_bump         | u8            |
+ * | 53     | root               | AuthoritySlot |
+ * | 87     | authority_epoch    | u64           |
+ * | 95     | pending_root       | AuthoritySlot |
+ * | 129    | recovery_eta       | u64           |
+ * | 137    | vault              | [u8; 32]      |
+ * | 169    | recovery_threshold | u8            |
+ * | 170    | authorities        | [AuthoritySlot; N] |
  */
-export const V1_OFFSET = {
-  VERSION: 0,
+const OFFSET = {
+  TAG: 0,
   BUMP: 1,
   WALLET_ID: 2,
   THRESHOLD: 34,
@@ -45,42 +51,33 @@ export const V1_OFFSET = {
   NONCE: 36,
   CREATION_SLOT: 44,
   VAULT_BUMP: 52,
-  AUTHORITY_SLOTS_START: 53,
+  ROOT: 53,
+  AUTHORITY_EPOCH: 87,
+  PENDING_ROOT: 95,
+  RECOVERY_ETA: 129,
+  VAULT: 137,
+  RECOVERY_THRESHOLD: 169,
 } as const
 
-export const V1_HEADER_SIZE = 53
 /** Stored pubkey width, one byte after the slot's `sig_scheme` tag. */
 export const AUTHORITY_PUBKEY_SIZE = 33
-export const AUTHORITY_SLOT_SIZE = 1 + AUTHORITY_PUBKEY_SIZE
-export const V1_MIN_ACCOUNT_SIZE = V1_HEADER_SIZE + AUTHORITY_SLOT_SIZE
 
-/**
- * Wallet layout versions (mirror `state.rs::MachineWallet::LAYOUT_VERSION{,_V2}`).
- * v2 = the v1 body (header + N slots, offsets unchanged) followed by ONE
- * trailing 34-byte root slot at `53 + N×34`; total `53 + N×34 + 34`.
- * Every wallet the v2 program creates (and every wallet that ran AdoptRoot)
- * is v2. The version byte `2` is shared with SessionState v2 — the lengths are
- * disjoint (wallet ≤ 631, session v2 ≥ 856), which the exact-length check
- * below turns into a hard reject.
- */
-export const WALLET_LAYOUT_V1 = 1
-export const WALLET_LAYOUT_V2 = 2
+/** `AuthoritySlot::EMPTY.sig_scheme`: the pending-root slot when no recovery is pending. */
+const EMPTY_SLOT_SCHEME = 0xff
 
-/** Exact account length for a wallet of `version` with `authorityCount` slots. */
-export function walletAccountSize(version: 1 | 2, authorityCount: number): number {
-  return (
-    V1_HEADER_SIZE +
-    authorityCount * AUTHORITY_SLOT_SIZE +
-    (version === WALLET_LAYOUT_V2 ? AUTHORITY_SLOT_SIZE : 0)
-  )
+/** Exact account length of a wallet with `authorityCount` slots (`MachineWallet::account_size`). */
+export function walletAccountSize(authorityCount: number): number {
+  if (!Number.isInteger(authorityCount) || authorityCount < 0 || authorityCount > MAX_AUTHORITIES) {
+    throw new RangeError(`walletAccountSize: authorityCount must be 0..=${MAX_AUTHORITIES}, got ${authorityCount}`)
+  }
+  return WALLET_HEADER_SIZE + authorityCount * AUTHORITY_SLOT_SIZE
 }
 
 /**
- * Authority signature schemes (mirror `program/src/state.rs::SigScheme`).
- * The chain scanner uses these tags to route a stored authority to the
- * correct signature verifier; **registering the wrong scheme silently locks
- * the signer out**, so callers should always use these named values rather
- * than literal `0`/`1`/`2`.
+ * Authority signature schemes (mirror `state.rs::SIG_SCHEME_*`).
+ * The chain routes a stored authority to its verifier by this tag;
+ * **registering the wrong scheme silently locks the signer out**, so callers
+ * should always use these named values rather than literal `0`/`1`/`2`.
  */
 export const SigScheme = {
   /** Raw P-256 ECDSA — signer signs the 32-byte operation_hash directly. */
@@ -93,12 +90,8 @@ export const SigScheme = {
 
 export type SigSchemeValue = (typeof SigScheme)[keyof typeof SigScheme]
 
-/**
- * Narrow a raw slot byte to a known scheme. Kept as three explicit comparisons
- * to mirror `state.rs::deserialize_inner` line-for-line — a lookup table would
- * read differently from the chain code this module exists to shadow.
- */
-function isKnownSigScheme(b: number): b is SigSchemeValue {
+/** `AuthoritySlot::is_known_scheme`. */
+export function isKnownSigScheme(b: number): b is SigSchemeValue {
   return b === SigScheme.Secp256r1 || b === SigScheme.Ed25519 || b === SigScheme.Webauthn
 }
 
@@ -139,45 +132,45 @@ export function effectiveAuthorityKey(slot: WalletAuthoritySlot): Uint8Array {
     : slot.pubkey.slice()
 }
 
-/**
- * Decoded MachineWallet account (layout v1 or v2). Returned by {@link parseWalletState}.
- *
- * `sigScheme` + `authority` mirror the *first* authority slot (back-compat
- * with the single-authority era); `authorities` carries every slot, in
- * on-chain order, so multi-owner surfaces don't re-derive byte offsets.
- */
+/** Decoded MachineWallet account. Returned by {@link parseWalletState}. */
 export interface MachineWalletState {
-  version: 1 | 2
   bump: number
-  walletId: Uint8Array // 32 bytes (keccak256(authority))
+  /** 32 bytes: keccak256 of the creating authority's pubkey; the wallet PDA seed. */
+  walletId: Uint8Array
   threshold: number
   authorityCount: number
   nonce: bigint
   creationSlot: bigint
   vaultBump: number
-  sigScheme: SigSchemeValue
   /**
-   * First authority's 33-byte storage-form pubkey — the *same* `Uint8Array`
-   * instance as `authorities[0].pubkey`, not a second copy. Slot 0 is not
-   * necessarily P-256; read `sigScheme` before routing it to a verifier.
+   * The root authority: alone may remove authorities, change the threshold,
+   * close the wallet and rotate the root. Always one of `authorities`.
    */
-  authority: Uint8Array
-  /** Every authority slot, in on-chain order. `authorities[0]` ≡ `{ sigScheme, pubkey: authority }`. */
-  authorities: ReadonlyArray<WalletAuthoritySlot>
+  root: WalletAuthoritySlot
   /**
-   * v2 root slot (the authority that alone may remove authorities, change the
-   * threshold, close the wallet, rotate the root). Always one of
-   * `authorities` (same scheme and pubkey). `null` on v1 wallets.
+   * Bumped whenever the trust basis of existing sessions changes (an authority
+   * removed, the root moved, the threshold changed, BumpEpoch). A session is
+   * live only while its recorded epoch equals this.
    */
-  root: WalletAuthoritySlot | null
+  authorityEpoch: bigint
+  /** The authority a pending recovery hands the root to; `null` when none is pending. */
+  pendingRoot: WalletAuthoritySlot | null
+  /** First slot `ExecuteRecovery` is accepted; `0n` exactly when `pendingRoot` is `null`. */
+  recoveryEta: bigint
+  /** 32-byte vault PDA, recorded at creation. */
+  vault: Uint8Array
+  /** Signatures `ProposeRecovery` needs; 0 = the spending `threshold`. */
+  recoveryThreshold: number
+  /** Every authority slot, in on-chain order. */
+  authorities: WalletAuthoritySlot[]
 }
 
 /**
  * Distinct class so lazy-deploy callers can `instanceof`-match on it without
  * resorting to error-message string sniffing. "Wallet PDA has no on-chain
  * account yet" is a recoverable state (popup will lazy-create on first sign);
- * a generic Error from {@link parseWalletState} (wrong version, truncated
- * body) is not.
+ * a generic Error from {@link parseWalletState} (wrong tag, truncated body) is
+ * not.
  */
 export class WalletNotDeployedError extends Error {
   constructor(public readonly walletAddress: StatePda) {
@@ -186,106 +179,150 @@ export class WalletNotDeployedError extends Error {
   }
 }
 
+const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
+  a.length === b.length && a.every((x, i) => x === b[i])
+
+const slotEqual = (a: WalletAuthoritySlot, b: WalletAuthoritySlot): boolean =>
+  a.sigScheme === b.sigScheme && bytesEqual(a.pubkey, b.pubkey)
+
 /**
- * Parse a raw account body into a typed {@link WalletState}. Mirrors
- * `state.rs::MachineWallet::deserialize` byte-for-byte.
+ * `AuthoritySlot::is_valid`: a P-256 key must carry a compressed SEC1 prefix
+ * (0x02/0x03) and a non-zero x; an Ed25519 key a zero pad byte and a non-zero
+ * key. A format check only, as on chain.
+ */
+function isValidAuthorityKey(slot: WalletAuthoritySlot): boolean {
+  const k = slot.pubkey
+  if (slot.sigScheme === SigScheme.Ed25519) {
+    return k[32] === 0 && k.subarray(0, 32).some((b) => b !== 0)
+  }
+  return (k[0] === 0x02 || k[0] === 0x03) && k.subarray(1).some((b) => b !== 0)
+}
+
+function readSlot(data: Uint8Array, off: number): { sigScheme: number; pubkey: Uint8Array } {
+  return { sigScheme: data[off], pubkey: data.slice(off + 1, off + AUTHORITY_SLOT_SIZE) }
+}
+
+/**
+ * Parse a raw account body into a typed {@link MachineWalletState}. Mirrors
+ * `state.rs::MachineWallet::deserialize` (the validating path) and rejects
+ * everything it rejects:
  *
- * Throws if the body is shorter than the v1 minimum, the version byte is
- * neither `1` nor `2`, `authority_count` is zero, the length is not EXACTLY
- * `walletAccountSize(version, authority_count)` (the chain's own
- * `deserialize_inner` rule — it also keeps a SessionState v2 body, which
- * shares version byte 2, from decoding as a wallet), a slot carries an
- * unknown scheme, or a v2 root is not one of the authorities. All are
- * unrecoverable — distinct from "account doesn't exist yet" which is the
- * caller's responsibility to detect (typically by checking `getAccountInfo`
- * returned null, then throwing {@link WalletNotDeployedError}).
+ * - byte 0 is not `'W'` (`Unsupported MachineWallet account tag <n>`) — a
+ *   session, a retired layout or a foreign account never decodes as a wallet;
+ * - `threshold` / `authority_count` outside `1 ≤ threshold ≤ count ≤ 16`;
+ * - a length other than exactly {@link walletAccountSize}`(count)`;
+ * - an unknown `sig_scheme` or a malformed key in any authority slot;
+ * - a root with an unknown scheme or one that is not an authority;
+ * - a pending root that is neither the canonical empty encoding (`0xFF ‖ 33×0`
+ *   with eta 0) nor a known-scheme slot with a non-zero eta (the program only
+ *   ever writes `eta = slot + RECOVERY_DELAY_SLOTS`);
+ * - `recovery_threshold > authority_count`.
+ *
+ * All are unrecoverable — distinct from "account doesn't exist yet", which the
+ * caller detects (typically `getAccountInfo` returned null, then
+ * {@link WalletNotDeployedError}).
  */
 export function parseWalletState(data: Uint8Array): MachineWalletState {
-  if (data.length < V1_MIN_ACCOUNT_SIZE) {
-    throw new Error(
-      `MachineWallet account too small: ${data.length} < ${V1_MIN_ACCOUNT_SIZE}`,
-    )
+  if (data.length < WALLET_HEADER_SIZE) {
+    throw new Error(`MachineWallet account too small: ${data.length} < ${WALLET_HEADER_SIZE}`)
+  }
+  const tag = data[OFFSET.TAG]
+  if (tag !== WALLET_ACCOUNT_TAG) {
+    throw new Error(`Unsupported MachineWallet account tag ${tag}`)
   }
 
-  const rawVersion = data[V1_OFFSET.VERSION]
-  if (rawVersion !== WALLET_LAYOUT_V1 && rawVersion !== WALLET_LAYOUT_V2) {
-    throw new Error(`Unsupported MachineWallet version: ${rawVersion} (expected 1 or 2)`)
+  const threshold = data[OFFSET.THRESHOLD]
+  const authorityCount = data[OFFSET.AUTHORITY_COUNT]
+  if (authorityCount < 1 || authorityCount > MAX_AUTHORITIES) {
+    throw new Error(`Invalid authority_count: ${authorityCount} (expected 1..=${MAX_AUTHORITIES})`)
   }
-  const version: 1 | 2 = rawVersion
+  if (threshold < 1 || threshold > authorityCount) {
+    throw new Error(`Invalid threshold: ${threshold} (expected 1..=${authorityCount})`)
+  }
 
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-  const authorityCount = data[V1_OFFSET.AUTHORITY_COUNT]
-  if (authorityCount < 1) {
-    throw new Error(`Invalid authority_count: ${authorityCount}`)
-  }
-  // Exact length, per version — the chain's rule (`state.rs::deserialize_inner`
-  // `src.len() != account_size_v(version, count)`). `CreateWallet`/`realloc`
-  // always size the account exactly, so a real wallet never carries trailing
-  // bytes; with v2 the trailing slot IS data (the root), so a lenient `<`
-  // would read a root from whatever sits at `53 + N×34`.
-  const expected = walletAccountSize(version, authorityCount)
+  // Exact length: `CreateWallet` / realloc always size the account to
+  // `account_size(count)`, so a stale tail slot can never shadow a live one.
+  const expected = walletAccountSize(authorityCount)
   if (data.length !== expected) {
     const what = data.length < expected ? 'too small' : 'has trailing bytes'
     throw new Error(
-      `MachineWallet account ${what}: ${data.length} != ${expected} for v${version} with ${authorityCount} authorities`,
+      `MachineWallet account ${what}: ${data.length} != ${expected} for ${authorityCount} authorities`,
     )
   }
 
   const authorities: WalletAuthoritySlot[] = []
   for (let i = 0; i < authorityCount; i++) {
-    const slotStart = V1_OFFSET.AUTHORITY_SLOTS_START + i * AUTHORITY_SLOT_SIZE
-    const sigSchemeRaw = data[slotStart]
-    // The lock-out guard applies to EVERY slot: an unknown scheme byte in any
-    // slot means this SDK build can't tell which verifier that authority
-    // routes to, and guessing silently locks the signer out. This mirrors the
-    // chain — `state.rs::deserialize_inner` rejects the whole account for the
-    // same reason, so such an account can't exist on chain today.
-    //
-    // Known divergence: the Swift SDK decodes tolerantly instead, keeping the
-    // unknown byte raw on `OnChainAuthority.sigScheme`. If a future scheme
-    // ships without a `version` bump, Swift readers degrade and TS readers
-    // throw. Deliberate — TS stays symmetric with the on-chain read contract.
-    if (!isKnownSigScheme(sigSchemeRaw)) {
-      throw new Error(`Unknown sig_scheme byte: ${sigSchemeRaw}`)
+    const raw = readSlot(data, WALLET_HEADER_SIZE + i * AUTHORITY_SLOT_SIZE)
+    // An unknown scheme means this build can't tell which verifier the
+    // authority routes to; guessing silently locks the signer out.
+    if (!isKnownSigScheme(raw.sigScheme)) {
+      throw new Error(`Unknown sig_scheme byte in authority slot ${i}: ${raw.sigScheme}`)
     }
-    authorities.push({
-      sigScheme: sigSchemeRaw,
-      pubkey: data.slice(slotStart + 1, slotStart + 1 + AUTHORITY_PUBKEY_SIZE),
-    })
+    const slot: WalletAuthoritySlot = { sigScheme: raw.sigScheme, pubkey: raw.pubkey }
+    if (!isValidAuthorityKey(slot)) {
+      throw new Error(`Invalid authority pubkey in slot ${i}`)
+    }
+    authorities.push(slot)
   }
 
-  let root: WalletAuthoritySlot | null = null
-  if (version === WALLET_LAYOUT_V2) {
-    const off = walletAccountSize(WALLET_LAYOUT_V1, authorityCount)
-    const scheme = data[off]
-    if (!isKnownSigScheme(scheme)) {
-      throw new Error(`Unknown root sig_scheme byte: ${scheme}`)
+  const rawRoot = readSlot(data, OFFSET.ROOT)
+  if (!isKnownSigScheme(rawRoot.sigScheme)) {
+    throw new Error(`Unknown root sig_scheme byte: ${rawRoot.sigScheme}`)
+  }
+  const root: WalletAuthoritySlot = { sigScheme: rawRoot.sigScheme, pubkey: rawRoot.pubkey }
+  if (!authorities.some((a) => slotEqual(a, root))) {
+    throw new Error('MachineWallet root is not one of its authorities')
+  }
+
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  const recoveryEta = view.getBigUint64(OFFSET.RECOVERY_ETA, true)
+  const rawPending = readSlot(data, OFFSET.PENDING_ROOT)
+  let pendingRoot: WalletAuthoritySlot | null
+  if (rawPending.sigScheme === EMPTY_SLOT_SCHEME && rawPending.pubkey.every((b) => b === 0)) {
+    if (recoveryEta !== 0n) {
+      throw new Error(`MachineWallet has no pending root but recovery_eta is ${recoveryEta}`)
     }
-    const pubkey = data.slice(off + 1, off + 1 + AUTHORITY_PUBKEY_SIZE)
-    // Chain rule: the root must be a current authority (same scheme AND pubkey).
-    const isAuthority = authorities.some(
-      (a) => a.sigScheme === scheme && a.pubkey.every((b, i) => b === pubkey[i]),
-    )
-    if (!isAuthority) {
-      throw new Error('MachineWallet v2 root is not one of its authorities')
+    pendingRoot = null
+  } else if (isKnownSigScheme(rawPending.sigScheme)) {
+    if (recoveryEta === 0n) {
+      throw new Error('MachineWallet has a pending root but recovery_eta is 0')
     }
-    root = { sigScheme: scheme, pubkey }
+    pendingRoot = { sigScheme: rawPending.sigScheme, pubkey: rawPending.pubkey }
+  } else {
+    throw new Error(`Invalid pending root slot (sig_scheme ${rawPending.sigScheme})`)
+  }
+
+  const recoveryThreshold = data[OFFSET.RECOVERY_THRESHOLD]
+  if (recoveryThreshold > authorityCount) {
+    throw new Error(`Invalid recovery_threshold: ${recoveryThreshold} > authority_count ${authorityCount}`)
   }
 
   return {
-    version,
-    bump: data[V1_OFFSET.BUMP],
-    walletId: data.slice(V1_OFFSET.WALLET_ID, V1_OFFSET.WALLET_ID + 32),
-    threshold: data[V1_OFFSET.THRESHOLD],
+    bump: data[OFFSET.BUMP],
+    walletId: data.slice(OFFSET.WALLET_ID, OFFSET.WALLET_ID + 32),
+    threshold,
     authorityCount,
-    nonce: view.getBigUint64(V1_OFFSET.NONCE, true),
-    creationSlot: view.getBigUint64(V1_OFFSET.CREATION_SLOT, true),
-    vaultBump: data[V1_OFFSET.VAULT_BUMP],
-    sigScheme: authorities[0].sigScheme,
-    authority: authorities[0].pubkey,
-    authorities,
+    nonce: view.getBigUint64(OFFSET.NONCE, true),
+    creationSlot: view.getBigUint64(OFFSET.CREATION_SLOT, true),
+    vaultBump: data[OFFSET.VAULT_BUMP],
     root,
+    authorityEpoch: view.getBigUint64(OFFSET.AUTHORITY_EPOCH, true),
+    pendingRoot,
+    recoveryEta,
+    vault: data.slice(OFFSET.VAULT, OFFSET.VAULT + 32),
+    recoveryThreshold,
+    authorities,
   }
+}
+
+/** True iff `slot` (scheme AND pubkey) is the wallet's root. */
+export function isRoot(state: MachineWalletState, slot: WalletAuthoritySlot): boolean {
+  return slotEqual(state.root, slot)
+}
+
+/** Index of `slot` (scheme AND pubkey) among the wallet's authorities, or -1. */
+export function findAuthority(state: MachineWalletState, slot: WalletAuthoritySlot): number {
+  return state.authorities.findIndex((a) => slotEqual(a, slot))
 }
 
 /**
@@ -317,8 +354,8 @@ export async function getWalletState(
  * dApp's `Execute` in two ordered txs — they can't be bundled because
  * `Execute`'s `operation_hash` is bound to `creation_slot`, which is only
  * fixed once `CreateWallet` lands on chain (see
- * `machine-wallet/program/src/processor/create_wallet.rs` and the
- * `compute_message_hash_v1` discussion in `processor/execute.rs`).
+ * `machine-wallet/program/src/processor/create_wallet.rs` and
+ * `processor/execute.rs`).
  *
  * The dApp doesn't see those two txs — from its perspective it hands one
  * `Execute` (with inner ixs) to the popup and gets back a signature.
@@ -330,19 +367,16 @@ export async function getWalletState(
  *
  * Why this isn't a "may break later" hack
  * ---------------------------------------
- * The on-chain `CreateWallet` initialiser writes `nonce = 0` unconditionally
- * (see `state.rs::MachineWallet::new`). The popup's lazy-deploy
- * choreography is the SDK ↔ popup contract: changing it on either side
- * requires a coordinated rollout, of which this function is the dApp-facing
- * surface. If a future MachineWallet version needs a non-zero starting
- * nonce, that version is necessarily a `state.rs` bump too — the version
- * gating below would reject it, and the SDK helper signature would change
- * accordingly.
+ * The on-chain `CreateWallet` initialiser writes `nonce = 0` unconditionally.
+ * The popup's lazy-deploy choreography is the SDK ↔ popup contract: changing
+ * it on either side requires a coordinated rollout, of which this function is
+ * the dApp-facing surface. A layout that started elsewhere would carry a new
+ * account tag, which {@link parseWalletState} would reject.
  *
  * Throws
  * ------
- * Re-throws any {@link parseWalletState} failure (wrong version, truncated
- * body, unknown sig_scheme) verbatim — those are real format incompatibilities
+ * Re-throws any {@link parseWalletState} failure (wrong tag, truncated body,
+ * unknown sig_scheme) verbatim — those are real format incompatibilities
  * distinct from the recoverable "not deployed yet" case.
  */
 export async function predictNextExecuteNonce(
