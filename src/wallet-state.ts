@@ -155,7 +155,7 @@ export interface MachineWalletState {
   authorityEpoch: bigint
   /** The authority a pending recovery hands the root to; `null` when none is pending. */
   pendingRoot: WalletAuthoritySlot | null
-  /** First slot `ExecuteRecovery` is accepted; `0n` exactly when `pendingRoot` is `null`. */
+  /** First slot `ExecuteRecovery` is accepted; always `0n` when `pendingRoot` is `null`. */
   recoveryEta: bigint
   /** 32-byte vault PDA, recorded at creation. */
   vault: Uint8Array
@@ -179,7 +179,8 @@ export class WalletNotDeployedError extends Error {
   }
 }
 
-const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
+/** Byte-wise equality of two arrays (same length, same bytes). */
+export const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i])
 
 const slotEqual = (a: WalletAuthoritySlot, b: WalletAuthoritySlot): boolean =>
@@ -213,9 +214,8 @@ function readSlot(data: Uint8Array, off: number): { sigScheme: number; pubkey: U
  * - a length other than exactly {@link walletAccountSize}`(count)`;
  * - an unknown `sig_scheme` or a malformed key in any authority slot;
  * - a root with an unknown scheme or one that is not an authority;
- * - a pending root that is neither the canonical empty encoding (`0xFF ‖ 33×0`
- *   with eta 0) nor a known-scheme slot with a non-zero eta (the program only
- *   ever writes `eta = slot + RECOVERY_DELAY_SLOTS`);
+ * - a pending root that is neither the canonical empty encoding (`0xFF ‖ 33×0`,
+ *   which requires eta 0) nor a known-scheme slot (any eta, as on chain);
  * - `recovery_threshold > authority_count`.
  *
  * All are unrecoverable — distinct from "account doesn't exist yet", which the
@@ -284,9 +284,6 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
     }
     pendingRoot = null
   } else if (isKnownSigScheme(rawPending.sigScheme)) {
-    if (recoveryEta === 0n) {
-      throw new Error('MachineWallet has a pending root but recovery_eta is 0')
-    }
     pendingRoot = { sigScheme: rawPending.sigScheme, pubkey: rawPending.pubkey }
   } else {
     throw new Error(`Invalid pending root slot (sig_scheme ${rawPending.sigScheme})`)

@@ -202,12 +202,14 @@ describe('parseWalletState', () => {
     expect(() => parseWalletState(data)).toThrow(/recovery_eta/i)
   })
 
-  it('rejects a pending root with eta 0', () => {
+  it('accepts a known-scheme pending root with eta 0, as the program does', () => {
     const { data } = makeAccount({
       authorities: [PASSKEY, SE_KEY],
       pending: { slot: SE_KEY, eta: 0n },
     })
-    expect(() => parseWalletState(data)).toThrow(/recovery_eta/i)
+    const s = parseWalletState(data)
+    expect(s.pendingRoot).toEqual(SE_KEY)
+    expect(s.recoveryEta).toBe(0n)
   })
 
   it('rejects recovery_threshold > authority_count', () => {

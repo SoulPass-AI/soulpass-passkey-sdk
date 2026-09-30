@@ -48,7 +48,7 @@ import {
   SLEEVE_ENTRY_SIZE,
 } from './constants';
 import type { CashMintPolicy } from './session';
-import { isKnownSigScheme, type MachineWalletState, type WalletAuthoritySlot } from '../wallet-state';
+import { bytesEqual, isKnownSigScheme, type MachineWalletState, type WalletAuthoritySlot } from '../wallet-state';
 
 /** A session's per-mint budget: the signed policy plus the program's running counters. */
 export interface CashMintState extends CashMintPolicy {
@@ -138,9 +138,6 @@ export function sessionAccountSize(programCount: number, cashCount: number): num
     MAX_SLEEVE_MINTS * SLEEVE_ENTRY_SIZE
   );
 }
-
-const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
-  a.length === b.length && a.every((x, i) => x === b[i]);
 
 const isZero = (b: Uint8Array): boolean => b.every((x) => x === 0);
 
@@ -302,16 +299,16 @@ export function parseSessionState(data: Uint8Array): SessionState {
  * since (`authority_epoch` — an authority removed, the root moved, the
  * threshold changed, or BumpEpoch).
  *
- * The expiry test is `currentSlot < expirySlot`, one slot stricter than the
- * program (`clock.slot > expiry_slot` fails): a session is never reported live
- * in a slot where the program could refuse it. The caller must pass the
+ * `expirySlot` is the last slot at which the program still accepts the
+ * session (`session_execute.rs` fails only on `clock.slot > expiry_slot`), so
+ * the expiry test is `currentSlot <= expirySlot`. The caller must pass the
  * wallet the session names (`session.wallet`); this predicate does not check
  * that pairing.
  */
 export function isSessionLive(s: SessionState, wallet: MachineWalletState, currentSlot: bigint): boolean {
   return (
     !s.revoked &&
-    currentSlot < s.expirySlot &&
+    currentSlot <= s.expirySlot &&
     s.walletCreationSlot === wallet.creationSlot &&
     s.authorityEpoch === wallet.authorityEpoch
   );

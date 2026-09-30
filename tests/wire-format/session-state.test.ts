@@ -213,8 +213,8 @@ describe('isSessionLive', () => {
     expect(isSessionLive(parseSessionState(d), wallet, 1_000n)).toBe(false)
   })
 
-  it('is not live at or past expiry_slot', () => {
-    expect(isSessionLive(session, wallet, session.expirySlot)).toBe(false)
+  it('is live at expiry_slot (the last accepted slot) and not past it', () => {
+    expect(isSessionLive(session, wallet, session.expirySlot)).toBe(true)
     expect(isSessionLive(session, wallet, session.expirySlot + 1n)).toBe(false)
   })
 
