@@ -172,7 +172,7 @@ describe('computeExecuteEphemeralMessage', () => {
 
   it('instruction tag is the ephemeral operation, not Execute', () => {
     expect(new TextDecoder().decode(EXECUTE_EPHEMERAL_TAG)).toBe(
-      'machine_wallet_execute_ephemeral_v2',
+      'machine_wallet_execute_ephemeral_v1',
     )
     expect(EXECUTE_EPHEMERAL_TAG).not.toEqual(EXECUTE_TAG)
   })

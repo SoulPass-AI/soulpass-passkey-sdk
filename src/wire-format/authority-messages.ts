@@ -22,44 +22,65 @@ import { hashSignedMessage, type MachineWalletDeployment } from './signed-messag
 
 const encoder = new TextEncoder();
 
-export const CREATE_WALLET_TAG = encoder.encode('machine_wallet_create_wallet_v1');
-export const CLOSE_WALLET_TAG = encoder.encode('machine_wallet_close_v1');
-export const ADVANCE_NONCE_TAG = encoder.encode('machine_wallet_advance_nonce_v1');
-export const CREATE_SESSION_TAG = encoder.encode('machine_wallet_create_session_v1');
-export const REVOKE_SESSION_TAG = encoder.encode('machine_wallet_revoke_session_v1');
-export const OWNER_CLOSE_SESSION_TAG = encoder.encode(
-  'machine_wallet_owner_close_session_v1',
-);
-export const ADD_AUTHORITY_TAG = encoder.encode('machine_wallet_add_authority_v1');
+/**
+ * Every instruction tag the program signs under, verbatim from
+ * `machine-wallet/program/src/processor/*.rs`. All `_v1`: the program has a
+ * single account layout and a single message format per operation, so there
+ * is no second version of any tag to confuse with the first.
+ *
+ * This table is the SDK's whole tag set — `signed-message-kat.test.ts` asserts
+ * it equals the fixture's tag set exactly, so adding an operation here without
+ * a contract vector (or vice versa) fails.
+ */
+export const MACHINE_WALLET_TAGS = {
+  createWallet: 'machine_wallet_create_wallet_v1',
+  execute: 'machine_wallet_execute_v1',
+  executeEphemeral: 'machine_wallet_execute_ephemeral_v1',
+  advanceNonce: 'machine_wallet_advance_nonce_v1',
+  createSession: 'machine_wallet_create_session_v1',
+  revokeSession: 'machine_wallet_revoke_session_v1',
+  ownerCloseSession: 'machine_wallet_owner_close_session_v1',
+  addAuthority: 'machine_wallet_add_authority_v1',
+  addAuthorityPop: 'machine_wallet_add_authority_pop_v1',
+  removeSelf: 'machine_wallet_remove_self_v1',
+  removeOther: 'machine_wallet_remove_other_v1',
+  setThreshold: 'machine_wallet_set_threshold_v1',
+  close: 'machine_wallet_close_v1',
+  rotateRoot: 'machine_wallet_rotate_root_v1',
+  proposeRecovery: 'machine_wallet_propose_recovery_v1',
+  cancelRecovery: 'machine_wallet_cancel_recovery_v1',
+  executeRecovery: 'machine_wallet_execute_recovery_v1',
+  setRecoveryThreshold: 'machine_wallet_set_recovery_threshold_v1',
+  bumpEpoch: 'machine_wallet_bump_epoch_v1',
+} as const;
+
+export type MachineWalletTag = (typeof MACHINE_WALLET_TAGS)[keyof typeof MACHINE_WALLET_TAGS];
+
+export const CREATE_WALLET_TAG = encoder.encode(MACHINE_WALLET_TAGS.createWallet);
+export const CLOSE_WALLET_TAG = encoder.encode(MACHINE_WALLET_TAGS.close);
+export const ADVANCE_NONCE_TAG = encoder.encode(MACHINE_WALLET_TAGS.advanceNonce);
+export const CREATE_SESSION_TAG = encoder.encode(MACHINE_WALLET_TAGS.createSession);
+export const REVOKE_SESSION_TAG = encoder.encode(MACHINE_WALLET_TAGS.revokeSession);
+export const OWNER_CLOSE_SESSION_TAG = encoder.encode(MACHINE_WALLET_TAGS.ownerCloseSession);
+export const ADD_AUTHORITY_TAG = encoder.encode(MACHINE_WALLET_TAGS.addAuthority);
 /**
  * Signed by the key *being added*, proving it holds its private key. Distinct
  * from {@link ADD_AUTHORITY_TAG} so the incoming key's proof can never be
  * counted toward the existing owners' threshold.
  */
-export const ADD_AUTHORITY_POP_TAG = encoder.encode(
-  'machine_wallet_add_authority_pop_v1',
-);
-export const REMOVE_AUTHORITY_TAG = encoder.encode('machine_wallet_remove_authority_v1');
-export const SET_THRESHOLD_TAG = encoder.encode('machine_wallet_set_threshold_v1');
-
-// ── machine-wallet v2 (program ca6073d) ──────────────────────────────────────
-// Tag strings are the program's, verbatim. RotateRoot / AdoptRoot are new
-// operations and so `_v1`; RemoveAuthority / SetThreshold / CloseWallet on a
-// v2 wallet and CreateSessionV2 are `_v2`, so a v1 signature can never
-// authorize them. Pinned by `signed-message-kat-vectors.json`.
-
-/** CreateSessionV2 (disc 18). `CREATE_SESSION_V2_TAG` in create_session.rs. */
-export const CREATE_SESSION_V2_TAG = encoder.encode('machine_wallet_create_session_v2');
-/** RotateRoot (disc 17). `ROTATE_ROOT_TAG` in rotate_root.rs. */
-export const ROTATE_ROOT_TAG = encoder.encode('machine_wallet_rotate_root_v1');
-/** AdoptRoot (disc 19). `ADOPT_ROOT_TAG` in adopt_root.rs. */
-export const ADOPT_ROOT_TAG = encoder.encode('machine_wallet_adopt_root_v1');
-/** RemoveAuthority on a v2 wallet (root-signed). `REMOVE_AUTHORITY_V2_TAG` in remove_authority.rs. */
-export const REMOVE_AUTHORITY_V2_TAG = encoder.encode('machine_wallet_remove_authority_v2');
-/** SetThreshold on a v2 wallet (root-signed). `SET_THRESHOLD_V2_TAG` in set_threshold.rs. */
-export const SET_THRESHOLD_V2_TAG = encoder.encode('machine_wallet_set_threshold_v2');
-/** CloseWallet on a v2 wallet (root-signed). `CLOSE_WALLET_V2_TAG` in close_wallet.rs. */
-export const CLOSE_WALLET_V2_TAG = encoder.encode('machine_wallet_close_v2');
+export const ADD_AUTHORITY_POP_TAG = encoder.encode(MACHINE_WALLET_TAGS.addAuthorityPop);
+/** RemoveAuthority where the signer removes itself (`REMOVE_SELF_TAG` in remove_authority.rs). */
+export const REMOVE_SELF_TAG = encoder.encode(MACHINE_WALLET_TAGS.removeSelf);
+/** RemoveAuthority of another authority — root AND threshold (`REMOVE_OTHER_TAG` in remove_authority.rs). */
+export const REMOVE_OTHER_TAG = encoder.encode(MACHINE_WALLET_TAGS.removeOther);
+export const SET_THRESHOLD_TAG = encoder.encode(MACHINE_WALLET_TAGS.setThreshold);
+/** RotateRoot (disc 17), signed by the current root. */
+export const ROTATE_ROOT_TAG = encoder.encode(MACHINE_WALLET_TAGS.rotateRoot);
+export const PROPOSE_RECOVERY_TAG = encoder.encode(MACHINE_WALLET_TAGS.proposeRecovery);
+export const CANCEL_RECOVERY_TAG = encoder.encode(MACHINE_WALLET_TAGS.cancelRecovery);
+export const EXECUTE_RECOVERY_TAG = encoder.encode(MACHINE_WALLET_TAGS.executeRecovery);
+export const SET_RECOVERY_THRESHOLD_TAG = encoder.encode(MACHINE_WALLET_TAGS.setRecoveryThreshold);
+export const BUMP_EPOCH_TAG = encoder.encode(MACHINE_WALLET_TAGS.bumpEpoch);
 
 /** Operands shared by every authority-signed operation except CreateWallet. */
 export interface AuthorityMessageBase {
@@ -164,9 +185,14 @@ export function computeRevokeSessionMessage(
   });
 }
 
-/** OwnerCloseSession: preamble `|| session_authority(32) || destination(32)`. */
+/**
+ * OwnerCloseSession: preamble `|| session_authority(32)`.
+ *
+ * No destination: the rent always goes back to the session's recorded
+ * `rent_payer` (it was the payer's deposit), so there is nothing to choose.
+ */
 export function computeOwnerCloseSessionMessage(
-  args: AuthorityMessageBase & { sessionAuthority: Uint8Array; destination: Uint8Array },
+  args: AuthorityMessageBase & { sessionAuthority: Uint8Array },
 ): Uint8Array {
   return hashSignedMessage({
     deployment: args.deployment,
@@ -174,7 +200,6 @@ export function computeOwnerCloseSessionMessage(
     payloadParts: [
       ...authorityPayload(args),
       requireLength(args.sessionAuthority, 32, 'sessionAuthority'),
-      requireLength(args.destination, 32, 'destination'),
     ],
   });
 }
@@ -229,24 +254,50 @@ export function computeAddAuthorityPopMessage(
   });
 }
 
+/** Operands naming one authority slot: `sig_scheme(1) || pubkey(33)`. */
+export interface AuthorityKeyOperand {
+  sigScheme: number;
+  /** 33-byte compressed P-256 point. */
+  pubkey: Uint8Array;
+}
+
+function keyOperand(args: AuthorityKeyOperand): Uint8Array[] {
+  return [requireByte(args.sigScheme, 'sigScheme'), requireLength(args.pubkey, 33, 'pubkey')];
+}
+
 /**
- * RemoveAuthority: preamble `|| remove_sig_scheme(1) || remove_pubkey(33) ||
- * new_threshold(1)`.
+ * RemoveAuthority, self-removal: preamble `|| sig_scheme(1) || pubkey(33) ||
+ * new_threshold(1)`. The key named signs (proving consent), plus the usual
+ * threshold.
  */
-export function computeRemoveAuthorityMessage(
-  args: AuthorityMessageBase & {
-    removeSigScheme: number;
-    removePubkey: Uint8Array;
-    newThreshold: number;
-  },
+export function computeRemoveSelfMessage(
+  args: AuthorityMessageBase & AuthorityKeyOperand & { newThreshold: number },
 ): Uint8Array {
   return hashSignedMessage({
     deployment: args.deployment,
-    tag: REMOVE_AUTHORITY_TAG,
+    tag: REMOVE_SELF_TAG,
     payloadParts: [
       ...authorityPayload(args),
-      requireByte(args.removeSigScheme, 'removeSigScheme'),
-      requireLength(args.removePubkey, 33, 'removePubkey'),
+      ...keyOperand(args),
+      requireByte(args.newThreshold, 'newThreshold'),
+    ],
+  });
+}
+
+/**
+ * RemoveAuthority of another authority (root AND threshold): same payload as
+ * {@link computeRemoveSelfMessage} under a distinct tag, so a self-removal
+ * signature can never authorize removing someone else.
+ */
+export function computeRemoveOtherMessage(
+  args: AuthorityMessageBase & AuthorityKeyOperand & { newThreshold: number },
+): Uint8Array {
+  return hashSignedMessage({
+    deployment: args.deployment,
+    tag: REMOVE_OTHER_TAG,
+    payloadParts: [
+      ...authorityPayload(args),
+      ...keyOperand(args),
       requireByte(args.newThreshold, 'newThreshold'),
     ],
   });
@@ -266,28 +317,6 @@ export function computeSetThresholdMessage(
   });
 }
 
-// ── machine-wallet v2 messages ───────────────────────────────────────────────
-// Same payloads as their v1 counterparts (or, for the root ops, preamble
-// `|| sig_scheme(1) || pubkey(33)`), under the v2 tags above.
-
-/**
- * CreateSessionV2: preamble `|| session_data_hash(32)` under
- * `machine_wallet_create_session_v2`, where `sessionDataHash` comes from
- * `hashSessionDataV2` (`session-v2.ts`).
- */
-export function computeCreateSessionV2Message(
-  args: AuthorityMessageBase & { sessionDataHash: Uint8Array },
-): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: CREATE_SESSION_V2_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireLength(args.sessionDataHash, 32, 'sessionDataHash'),
-    ],
-  });
-}
-
 /** RotateRoot: preamble `|| new_root_sig_scheme(1) || new_root_pubkey(33)`. Signed by the current root. */
 export function computeRotateRootMessage(
   args: AuthorityMessageBase & { newRootSigScheme: number; newRootPubkey: Uint8Array },
@@ -303,65 +332,70 @@ export function computeRotateRootMessage(
   });
 }
 
-/** AdoptRoot: preamble `|| root_sig_scheme(1) || root_pubkey(33)`. Threshold-approved. */
-export function computeAdoptRootMessage(
-  args: AuthorityMessageBase & { rootSigScheme: number; rootPubkey: Uint8Array },
+/**
+ * ProposeRecovery: preamble `|| sig_scheme(1) || pubkey(33)` naming an
+ * existing authority as the next root. Approved by the recovery threshold;
+ * starts the recovery delay.
+ */
+export function computeProposeRecoveryMessage(
+  args: AuthorityMessageBase & AuthorityKeyOperand,
 ): Uint8Array {
   return hashSignedMessage({
     deployment: args.deployment,
-    tag: ADOPT_ROOT_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.rootSigScheme, 'rootSigScheme'),
-      requireLength(args.rootPubkey, 33, 'rootPubkey'),
-    ],
+    tag: PROPOSE_RECOVERY_TAG,
+    payloadParts: [...authorityPayload(args), ...keyOperand(args)],
   });
 }
 
-/** RemoveAuthority on a v2 wallet: the v1 payload under `machine_wallet_remove_authority_v2`. */
-export function computeRemoveAuthorityV2Message(
-  args: AuthorityMessageBase & {
-    removeSigScheme: number;
-    removePubkey: Uint8Array;
-    newThreshold: number;
-  },
+/**
+ * ExecuteRecovery: same payload as {@link computeProposeRecoveryMessage}
+ * (the pending root), signed by the pending root itself once the delay has
+ * elapsed. The distinct tag keeps a proposal signature from executing.
+ */
+export function computeExecuteRecoveryMessage(
+  args: AuthorityMessageBase & AuthorityKeyOperand,
 ): Uint8Array {
   return hashSignedMessage({
     deployment: args.deployment,
-    tag: REMOVE_AUTHORITY_V2_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.removeSigScheme, 'removeSigScheme'),
-      requireLength(args.removePubkey, 33, 'removePubkey'),
-      requireByte(args.newThreshold, 'newThreshold'),
-    ],
+    tag: EXECUTE_RECOVERY_TAG,
+    payloadParts: [...authorityPayload(args), ...keyOperand(args)],
   });
 }
 
-/** SetThreshold on a v2 wallet: the v1 payload under `machine_wallet_set_threshold_v2`. */
-export function computeSetThresholdV2Message(
-  args: AuthorityMessageBase & { newThreshold: number },
-): Uint8Array {
+/** CancelRecovery (root-signed veto): the bare preamble. */
+export function computeCancelRecoveryMessage(args: AuthorityMessageBase): Uint8Array {
   return hashSignedMessage({
     deployment: args.deployment,
-    tag: SET_THRESHOLD_V2_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.newThreshold, 'newThreshold'),
-    ],
+    tag: CANCEL_RECOVERY_TAG,
+    payloadParts: authorityPayload(args),
   });
 }
 
-/** CloseWallet on a v2 wallet: the v1 payload under `machine_wallet_close_v2`. */
-export function computeCloseWalletV2Message(
-  args: AuthorityMessageBase & { destination: Uint8Array },
+/**
+ * BumpEpoch: the bare preamble. Any single authority may sign it — it only
+ * invalidates every session created under the current authority epoch.
+ */
+export function computeBumpEpochMessage(args: AuthorityMessageBase): Uint8Array {
+  return hashSignedMessage({
+    deployment: args.deployment,
+    tag: BUMP_EPOCH_TAG,
+    payloadParts: authorityPayload(args),
+  });
+}
+
+/**
+ * SetRecoveryThreshold (root AND threshold): preamble `|| recovery_threshold(1)`.
+ * `0` follows the spending threshold.
+ */
+export function computeSetRecoveryThresholdMessage(
+  args: AuthorityMessageBase & { recoveryThreshold: number },
 ): Uint8Array {
   return hashSignedMessage({
     deployment: args.deployment,
-    tag: CLOSE_WALLET_V2_TAG,
+    tag: SET_RECOVERY_THRESHOLD_TAG,
     payloadParts: [
       ...authorityPayload(args),
-      requireLength(args.destination, 32, 'destination'),
+      requireByte(args.recoveryThreshold, 'recoveryThreshold'),
     ],
   });
 }

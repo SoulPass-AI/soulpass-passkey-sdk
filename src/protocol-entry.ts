@@ -69,6 +69,7 @@ export {
 } from './wire-format/signed-message'
 export type { MachineWalletDeployment } from './wire-format/signed-message'
 export {
+  MACHINE_WALLET_TAGS,
   CREATE_WALLET_TAG,
   CLOSE_WALLET_TAG,
   ADVANCE_NONCE_TAG,
@@ -77,14 +78,15 @@ export {
   OWNER_CLOSE_SESSION_TAG,
   ADD_AUTHORITY_TAG,
   ADD_AUTHORITY_POP_TAG,
-  REMOVE_AUTHORITY_TAG,
+  REMOVE_SELF_TAG,
+  REMOVE_OTHER_TAG,
   SET_THRESHOLD_TAG,
-  CREATE_SESSION_V2_TAG,
   ROTATE_ROOT_TAG,
-  ADOPT_ROOT_TAG,
-  REMOVE_AUTHORITY_V2_TAG,
-  SET_THRESHOLD_V2_TAG,
-  CLOSE_WALLET_V2_TAG,
+  PROPOSE_RECOVERY_TAG,
+  CANCEL_RECOVERY_TAG,
+  EXECUTE_RECOVERY_TAG,
+  SET_RECOVERY_THRESHOLD_TAG,
+  BUMP_EPOCH_TAG,
   computeCreateWalletMessage,
   computeCloseWalletMessage,
   computeAdvanceNonceMessage,
@@ -93,16 +95,21 @@ export {
   computeOwnerCloseSessionMessage,
   computeAddAuthorityMessage,
   computeAddAuthorityPopMessage,
-  computeRemoveAuthorityMessage,
+  computeRemoveSelfMessage,
+  computeRemoveOtherMessage,
   computeSetThresholdMessage,
-  computeCreateSessionV2Message,
   computeRotateRootMessage,
-  computeAdoptRootMessage,
-  computeRemoveAuthorityV2Message,
-  computeSetThresholdV2Message,
-  computeCloseWalletV2Message,
+  computeProposeRecoveryMessage,
+  computeCancelRecoveryMessage,
+  computeExecuteRecoveryMessage,
+  computeSetRecoveryThresholdMessage,
+  computeBumpEpochMessage,
 } from './wire-format/authority-messages'
-export type { AuthorityMessageBase } from './wire-format/authority-messages'
+export type {
+  AuthorityMessageBase,
+  AuthorityKeyOperand,
+  MachineWalletTag,
+} from './wire-format/authority-messages'
 export {
   buildExecuteIxData,
   buildEvidenceIxData,

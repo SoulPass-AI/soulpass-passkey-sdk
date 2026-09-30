@@ -3,12 +3,9 @@
  * `machine-wallet/program/src/processor/execute.rs::compute_message_hash`
  * (disc=1) and `compute_ephemeral_message_hash` (disc=16).
  *
- * Naming: these used to be `computeExecuteMessageV0` / `...V1`, where the
- * suffix meant the instruction discriminator. That collided head-on with the
- * protocol's own versioning — on chain, plain Execute is now
- * `machine_wallet_execute_v1` and the ephemeral variant is
- * `machine_wallet_execute_ephemeral_v2`, so "V1" would have named the wrong
- * one. Named by operation instead; the version lives in the tag alone.
+ * Named by operation, not by discriminator or version: the version lives in
+ * the tag alone (`machine_wallet_execute_v1` /
+ * `machine_wallet_execute_ephemeral_v1`).
  *
  * Two distinct tags ensure a challenge signed for the disc=1 path can never
  * replay against the disc=16 handler. The ephemeral tag also length-prefixes
@@ -17,22 +14,23 @@
  */
 
 import { requireByte, requireLength } from './_bytes';
-import { authorityPayload, type AuthorityMessageBase } from './authority-messages';
+import {
+  authorityPayload,
+  MACHINE_WALLET_TAGS,
+  type AuthorityMessageBase,
+} from './authority-messages';
 import { hashSignedMessage } from './signed-message';
 
 /** Instruction tag for the disc=1 Execute message hash. */
-export const EXECUTE_TAG = new TextEncoder().encode('machine_wallet_execute_v1');
+export const EXECUTE_TAG = new TextEncoder().encode(MACHINE_WALLET_TAGS.execute);
 
 /**
  * Instruction tag for the disc=16 ExecuteWithEphemeralSigners message hash.
- *
- * `_v2`, not `_v1`: plain Execute owns `machine_wallet_execute_v1`. Do not
- * "fix" this to match the neighbouring constant — they name different
- * operations, and making them agree would point the ephemeral path at Execute's
- * tag.
+ * A different operation from Execute (different tag string), so a disc=1
+ * challenge can never replay against the disc=16 handler.
  */
 export const EXECUTE_EPHEMERAL_TAG = new TextEncoder().encode(
-  'machine_wallet_execute_ephemeral_v2',
+  MACHINE_WALLET_TAGS.executeEphemeral,
 );
 
 /**
