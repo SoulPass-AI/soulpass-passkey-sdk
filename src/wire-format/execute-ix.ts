@@ -8,8 +8,7 @@
  */
 
 import { MachineWalletDisc } from './disc';
-import { MAX_CLIENT_DATA_JSON_SIZE } from './webauthn';
-import { MAX_EPHEMERAL_SIGNERS } from './constants';
+import { MAX_CLIENT_DATA_JSON_SIZE, MAX_EPHEMERAL_SIGNERS } from './constants';
 import type { InnerInstruction } from './inner-hash';
 import { accountFlags } from './inner-hash';
 import { u16LE, u32LE, u64LE, concatBytes } from './_bytes';

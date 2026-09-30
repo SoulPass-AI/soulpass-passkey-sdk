@@ -13,8 +13,8 @@
  */
 
 import { keccak_256 } from '@noble/hashes/sha3';
-import { concatBytes, requireByte, requireLength, u64LE } from './_bytes';
-import { MAX_ALLOWED_PROGRAMS, MAX_CASH_MINTS, NATIVE_SOL_MINT, SESSION_FLAGS_KNOWN } from './constants';
+import { bytesEqual, concatBytes, requireByte, requireLength, u64LE } from './_bytes';
+import { MAX_ALLOWED_PROGRAMS, MAX_CASH_MINTS, SESSION_FLAGS_KNOWN, isNativeSolMint } from './constants';
 import { MachineWalletDisc } from './disc';
 import type { MachineWalletErrorName } from './errors';
 
@@ -76,14 +76,15 @@ function chainError(name: MachineWalletErrorName, detail: string, tag?: string):
   return new Error(`${name}${tag === undefined ? '' : `(${tag})`}: ${detail}`);
 }
 
-const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
-  a.length === b.length && a.every((x, i) => x === b[i]);
-
 /**
  * Reject parameters the program would reject, before anyone signs them.
  * Thrown `Error` messages start with the on-chain error name (`TooManyAllowedPrograms`,
  * `TooManyCashMints`, `DuplicateCashMint`, `InvalidCashCap`, `SessionSolBudgetMissing`,
  * `InvalidSessionData(<field>)`); wrong-width fields throw `RangeError`.
+ *
+ * Checks run in the chain's order, so input with several faults reports the
+ * one the program would: the disc-4 decoder's count checks (programs, then
+ * cash) first, then the handler's field checks.
  *
  * Not checked here (they need chain state): expiry vs the current slot and
  * `MAX_SESSION_LIFETIME_SLOTS`, and whether the creator is a wallet authority.
@@ -97,13 +98,18 @@ export function validateSessionParams(p: SessionParams): void {
   p.allowedPrograms.forEach((program, i) => requireLength(program, 32, `allowedPrograms[${i}]`));
   p.cash.forEach((c, i) => requireLength(c.mint, 32, `cash[${i}].mint`));
 
-  if (p.sessionAuthority.every((b) => b === 0)) {
-    throw chainError('InvalidSessionData', 'sessionAuthority must not be all zero', 'sessionAuthority');
-  }
-  // The decoder rejects a count of 0 or > MAX under this name.
+  // Decoder (instruction.rs): a program count of 0 or > MAX, then a cash count > MAX.
   const n = p.allowedPrograms.length;
   if (n === 0 || n > MAX_ALLOWED_PROGRAMS) {
     throw chainError('TooManyAllowedPrograms', `allowedPrograms must hold 1..=${MAX_ALLOWED_PROGRAMS} entries, got ${n}`);
+  }
+  if (p.cash.length > MAX_CASH_MINTS) {
+    throw chainError('TooManyCashMints', `cash must hold at most ${MAX_CASH_MINTS} entries, got ${p.cash.length}`);
+  }
+
+  // Handler (create_session.rs).
+  if (p.sessionAuthority.every((b) => b === 0)) {
+    throw chainError('InvalidSessionData', 'sessionAuthority must not be all zero', 'sessionAuthority');
   }
   if ((p.flags & ~SESSION_FLAGS_KNOWN) !== 0) {
     throw chainError('InvalidSessionData', `unknown flag bits 0x${p.flags.toString(16)}`, 'flags');
@@ -114,9 +120,6 @@ export function validateSessionParams(p: SessionParams): void {
     }
   });
 
-  if (p.cash.length > MAX_CASH_MINTS) {
-    throw chainError('TooManyCashMints', `cash must hold at most ${MAX_CASH_MINTS} entries, got ${p.cash.length}`);
-  }
   p.cash.forEach((c, i) => {
     // A zero cap is a dead budget; a zero period is a rollover hazard.
     if (c.periodCap === 0n || c.lifetimeCap === 0n || c.periodSlots === 0n) {
@@ -126,7 +129,7 @@ export function validateSessionParams(p: SessionParams): void {
       throw chainError('DuplicateCashMint', `cash[${i}] repeats an earlier mint`);
     }
   });
-  if (!p.cash.some((c) => bytesEqual(c.mint, NATIVE_SOL_MINT))) {
+  if (!p.cash.some((c) => isNativeSolMint(c.mint))) {
     throw chainError('SessionSolBudgetMissing', 'cash must include a NATIVE_SOL_MINT (all-zero) entry');
   }
 }
@@ -170,8 +173,12 @@ export function hashSessionData(p: SessionParams): Uint8Array {
  * `[4] || max_slot(u64 LE) || <sessionFields>` — length 118 + 32N + 64M.
  * Accounts: {@link CREATE_SESSION_ACCOUNTS}.
  */
-export function buildCreateSessionIxData(maxSlot: bigint, p: SessionParams): Uint8Array {
-  return concatBytes([Uint8Array.of(MachineWalletDisc.CreateSession), u64LE(maxSlot), ...sessionFields(p)]);
+export function buildCreateSessionIxData(args: SessionParams & { maxSlot: bigint }): Uint8Array {
+  return concatBytes([
+    Uint8Array.of(MachineWalletDisc.CreateSession),
+    u64LE(args.maxSlot),
+    ...sessionFields(args),
+  ]);
 }
 
 /**

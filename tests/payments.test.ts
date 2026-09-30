@@ -429,7 +429,7 @@ describe('SoulPassPayments', () => {
       })).rejects.toMatchObject({ code: 'PAYMENT_STATUS_UNKNOWN' })
 
       // The tab-scoped record carries both capabilities under the v2 key.
-      expect(JSON.parse(store['soulpass_direct_payment_v2:pi_siya_123'])).toEqual({
+      expect(JSON.parse(store['soulpass_direct_payment_capability:pi_siya_123'])).toEqual({
         clientSecret: CLIENT_SECRET,
         displayToken: DISPLAY_TOKEN,
       })

@@ -23,8 +23,8 @@ export const FLAG_WRITABLE = 0x01;
 /**
  * Marks an inner-ix account as one of the per-Execute ephemeral signer PDAs.
  * `process_with_ephemeral_signers` `invoke_signed`s the derived PDA, granting
- * `is_signer = true` to the CPI. Inert on the legacy disc=1 Execute path —
- * still hashed into `inner_hash`, but no signer privilege is conferred.
+ * `is_signer = true` to the CPI. Inert under plain Execute (disc 1) — still
+ * hashed into `inner_hash`, but no signer privilege is conferred.
  */
 export const FLAG_EPHEMERAL_SIGNER = 0x02;
 

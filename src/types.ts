@@ -231,8 +231,8 @@ export interface SDKSignTransactionMessage {
      * inner ixs is the dApp's responsibility. Maximum is the program's
      * MAX_EPHEMERAL_SIGNERS (4).
      *
-     * Omit or pass an empty array to use the legacy `disc=1 Execute`
-     * path — no behaviour change for non-ephemeral flows.
+     * Omit it (or pass an empty array, which the SDK drops) for plain
+     * Execute (disc 1); the ix builders reject an empty bumps array.
      */
     ephemeralSignerBumps?: number[]
   }

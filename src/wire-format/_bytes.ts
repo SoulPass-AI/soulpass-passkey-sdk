@@ -69,3 +69,8 @@ export function concatBytes(parts: ReadonlyArray<Uint8Array>): Uint8Array {
   }
   return out;
 }
+
+/** Byte-wise equality: same length, same bytes. */
+export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}

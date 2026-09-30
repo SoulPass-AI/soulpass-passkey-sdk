@@ -71,10 +71,13 @@ function keyThresholdMaxSlot(
 export const GOVERNED_ACCOUNTS = ['instructions_sysvar', 'wallet (w)', 'fee_payer (s)'] as const;
 /** RevokeSession (6), `revoke_session.rs`. */
 export const REVOKE_SESSION_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'session (w)'] as const;
-/** OwnerCloseSession (12), `owner_close_session.rs`; rent goes to the session's recorded rent payer. */
-export const OWNER_CLOSE_SESSION_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'session (w)', 'rent_payer (w)'] as const;
-/** CloseSession (8), `close_session.rs`; signed by the session key. */
-export const CLOSE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)', 'rent_payer (w)'] as const;
+/**
+ * OwnerCloseSession (12), `owner_close_session.rs`. The rent goes to
+ * `destination`, which must be the session's recorded rent payer.
+ */
+export const OWNER_CLOSE_SESSION_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'session (w)', 'destination (w) = rent_payer'] as const;
+/** CloseSession (8), `close_session.rs`; signed by the session key, rent to the recorded rent payer. */
+export const CLOSE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)', 'destination (w) = rent_payer'] as const;
 /** SelfRevokeSession (7), `self_revoke_session.rs`; signed by the session key. */
 export const SELF_REVOKE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)'] as const;
 /** CloseWallet (2), `close_wallet.rs`. */

@@ -14,6 +14,7 @@
 
 import type { Connection } from '@solana/web3.js'
 import type { StatePda, StatePdaKey } from './types'
+import { bytesEqual } from './wire-format/_bytes'
 import {
   AUTHORITY_SLOT_SIZE,
   MAX_AUTHORITIES,
@@ -178,10 +179,6 @@ export class WalletNotDeployedError extends Error {
     this.name = 'WalletNotDeployedError'
   }
 }
-
-/** Byte-wise equality of two arrays (same length, same bytes). */
-export const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
-  a.length === b.length && a.every((x, i) => x === b[i])
 
 const slotEqual = (a: WalletAuthoritySlot, b: WalletAuthoritySlot): boolean =>
   a.sigScheme === b.sigScheme && bytesEqual(a.pubkey, b.pubkey)

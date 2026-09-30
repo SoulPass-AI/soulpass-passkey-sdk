@@ -32,21 +32,19 @@
  * wallet nonce; after success the same `index` derives a different PDA
  * (next nonce). A relay cannot replay because the on-chain handler binds
  * `(nonce, bumps, inner_hash)` into the threshold challenge — see
- * `compute_message_hash_v1`. Off-curve PDAs reclaim their own rent when
+ * `processor::execute::compute_ephemeral_message_hash`. Off-curve PDAs reclaim their own rent when
  * inner ix closes the account they were init'd into.
  */
 
 import { PublicKey } from '@solana/web3.js'
 import { u64LE } from './wire-format/_bytes'
+import { MAX_EPHEMERAL_SIGNERS } from './wire-format/constants'
 import type { StatePdaKey } from './types'
 
 /** Mirror of `MachineWallet::EPHEMERAL_SIGNER_SEED_PREFIX` (state.rs). */
 export const EPHEMERAL_SIGNER_SEED_PREFIX = new TextEncoder().encode(
   'machine_ephemeral',
 )
-
-/** Mirror of `state::MAX_EPHEMERAL_SIGNERS` — keep in sync with the on-chain cap. */
-export const MAX_EPHEMERAL_SIGNERS = 4
 
 /** A single ephemeral signer the dApp can reference in an inner instruction. */
 export interface EphemeralSigner {
@@ -85,7 +83,7 @@ export interface DeriveEphemeralSignersInput {
  * given the same `(walletAddress, walletNonce, count)` it always returns
  * the same pubkeys. The matching nonce MUST be live at Execute time — if
  * another instruction bumps the wallet nonce between derive and submit,
- * the chain rejects with `MessageMismatch` (compute_message_hash_v1
+ * the chain rejects with `MessageMismatch` (`compute_ephemeral_message_hash`
  * differs on `nonce`) before any state change.
  *
  * Throws if `count` is outside `1..=MAX_EPHEMERAL_SIGNERS`. Throws if the

@@ -74,7 +74,7 @@ export const REMOVE_SELF_TAG = encoder.encode(MACHINE_WALLET_TAGS.removeSelf);
 /** RemoveAuthority of another authority — root AND threshold (`REMOVE_OTHER_TAG` in remove_authority.rs). */
 export const REMOVE_OTHER_TAG = encoder.encode(MACHINE_WALLET_TAGS.removeOther);
 export const SET_THRESHOLD_TAG = encoder.encode(MACHINE_WALLET_TAGS.setThreshold);
-/** RotateRoot (disc 17), signed by the current root. */
+/** RotateRoot, signed by the current root (`ROTATE_ROOT_TAG` in rotate_root.rs). */
 export const ROTATE_ROOT_TAG = encoder.encode(MACHINE_WALLET_TAGS.rotateRoot);
 export const PROPOSE_RECOVERY_TAG = encoder.encode(MACHINE_WALLET_TAGS.proposeRecovery);
 export const CANCEL_RECOVERY_TAG = encoder.encode(MACHINE_WALLET_TAGS.cancelRecovery);

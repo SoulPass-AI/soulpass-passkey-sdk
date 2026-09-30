@@ -2,7 +2,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   SOULPASS_RP_ID,
-  MAX_CLIENT_DATA_JSON_SIZE,
   PRODUCTION_WEBAUTHN_ORIGIN,
   TEST_WEBAUTHN_ORIGIN,
   allowedWebAuthnOrigins,
@@ -12,9 +11,8 @@ import {
 // Mirrors `ALLOWED_ORIGIN_HOSTS` in machine-wallet/program/src/webauthn.rs:
 // exact allowlist per deployment, never a *.soulpass.ai suffix rule.
 describe('isAllowedWebAuthnOrigin', () => {
-  it('pins the RP id and sidecar cap to the on-chain constants', () => {
+  it('pins the RP id to the on-chain constant', () => {
     expect(SOULPASS_RP_ID).toBe('soulpass.ai')
-    expect(MAX_CLIENT_DATA_JSON_SIZE).toBe(1024)
   })
 
   it('mainnet and local accept only the production wallet origin', () => {

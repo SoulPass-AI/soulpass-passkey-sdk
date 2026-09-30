@@ -10,8 +10,8 @@ import { Keypair, PublicKey } from '@solana/web3.js'
 import {
   deriveEphemeralSigners,
   EPHEMERAL_SIGNER_SEED_PREFIX,
-  MAX_EPHEMERAL_SIGNERS,
 } from '../src/ephemeral-signers'
+import { MAX_EPHEMERAL_SIGNERS } from '../src/wire-format/constants'
 
 // Canonical machine-wallet program ID (mirrors lib.rs `declare_id!`). Embedded
 // directly so the test never depends on a constants module that might drift.

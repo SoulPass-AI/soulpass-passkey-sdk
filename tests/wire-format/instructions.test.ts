@@ -67,7 +67,7 @@ function vector(name: string) {
     if (!f) throw new Error(`${name} has no field ${n}`)
     return hexToBytes(f.hex)
   }
-  const u64 = (n: string): bigint => new DataView(field(n).buffer).getBigUint64(0, true)
+  const u64 = (n: string): bigint => new DataView(field(n).buffer, field(n).byteOffset).getBigUint64(0, true)
   const u8 = (n: string): number => field(n)[0]
   return { v, field, u64, u8 }
 }
@@ -210,6 +210,11 @@ describe('builders pinned to the decoder lengths', () => {
     expect(() => buildRevokeSessionIxData({ maxSlot: 1n, sessionAuthority: pk33 })).toThrow(RangeError)
     expect(() => buildRotateRootIxData({ maxSlot: 1n, newRootSigScheme: 0, newRootPubkey: key32 })).toThrow(RangeError)
     expect(() => buildSetThresholdIxData({ newThreshold: 256, maxSlot: 1n })).toThrow(RangeError)
+    expect(() =>
+      buildRemoveAuthorityIxData({ sigScheme: 0, pubkey: key32, newThreshold: 1, maxSlot: 1n }),
+    ).toThrow(RangeError)
+    expect(() => buildProposeRecoveryIxData({ sigScheme: 0, pubkey: key32, maxSlot: 1n })).toThrow(RangeError)
+    expect(() => buildCloseWalletIxData({ maxSlot: 1n, destination: pk33 })).toThrow(RangeError)
   })
 })
 
@@ -229,7 +234,7 @@ describe('buildSessionExecuteIxData', () => {
     const d = buildSessionExecuteIxData({ innerInstructions: inner, remainingAccounts })
     const exec = buildExecuteIxData({ maxSlot: 9n, innerInstructions: inner, remainingAccounts })
     expect(d[0]).toBe(MachineWalletDisc.SessionExecute)
-    expect(new DataView(d.buffer).getUint32(1, true)).toBe(1)
+    expect(new DataView(d.buffer, d.byteOffset).getUint32(1, true)).toBe(1)
     // Execute is [1] || max_slot(8) || <same tail>; SessionExecute has no max_slot.
     expect(d.slice(1)).toEqual(exec.slice(9))
   })
@@ -239,8 +244,8 @@ describe('account tables', () => {
   it('match the program handlers', () => {
     expect(GOVERNED_ACCOUNTS).toEqual(['instructions_sysvar', 'wallet (w)', 'fee_payer (s)'])
     expect(REVOKE_SESSION_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'session (w)'])
-    expect(OWNER_CLOSE_SESSION_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'session (w)', 'rent_payer (w)'])
-    expect(CLOSE_SESSION_ACCOUNTS).toEqual(['session (w)', 'authority (s)', 'rent_payer (w)'])
+    expect(OWNER_CLOSE_SESSION_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'session (w)', 'destination (w) = rent_payer'])
+    expect(CLOSE_SESSION_ACCOUNTS).toEqual(['session (w)', 'authority (s)', 'destination (w) = rent_payer'])
     expect(SELF_REVOKE_SESSION_ACCOUNTS).toEqual(['session (w)', 'authority (s)'])
     expect(CLOSE_WALLET_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'vault', 'destination (w)', 'system_program'])
     expect(CREATE_WALLET_ACCOUNTS).toEqual(['instructions_sysvar', 'payer (s)', 'wallet (w)', 'system_program'])

@@ -61,9 +61,8 @@ export type MachineWalletDiscValue =
   (typeof MachineWalletDisc)[keyof typeof MachineWalletDisc];
 
 /**
- * Discriminators the program's dispatcher rejects (`InvalidInstructionData`).
- * 13 never shipped, 14 was the removed full-authData sidecar (superseded by
- * 15), 18/19 were the removed CreateSessionV2 / AdoptRoot
- * (`retired_and_unknown_discs_rejected`). Nothing in the SDK may emit them.
+ * Discriminators inside the table's range that the program's dispatcher
+ * rejects (`InvalidInstructionData`; `retired_and_unknown_discs_rejected`).
+ * They are unassigned and never reused. Nothing in the SDK may emit them.
  */
 export const REJECTED_DISCS: readonly number[] = Object.freeze([13, 14, 18, 19]);

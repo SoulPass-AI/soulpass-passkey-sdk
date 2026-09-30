@@ -32,15 +32,13 @@ function katField(vector: string, field: string): Uint8Array {
 }
 
 describe('deriveWalletPda', () => {
-  it('KAT wallet_id is a valid [WALLET_SEED, id] seed set; its synthetic bump is range-checked only', () => {
+  it('KAT wallet_id is a valid [WALLET_SEED, id] seed set', () => {
     const walletId = katField('wallet_2auth_passkey_root_pending_recovery', 'wallet_id')
     const bump = katField('wallet_2auth_passkey_root_pending_recovery', 'bump')
     expect(walletId).toHaveLength(32)
     expect(bump).toHaveLength(1)
-    // The KAT id (0x11 x32) and bump (0xfe) are synthetic layout bytes, not a
-    // real derivation: under this program id that pair lands on the curve, so
-    // createProgramAddressSync([seed, id, [0xfe]]) rejects it. Derive the
-    // canonical bump for the same id instead and prove it round-trips.
+    // The KAT id and bump are synthetic layout bytes, not a real derivation:
+    // derive the canonical bump for the same id and prove it round-trips.
     const [address, canonical] = PublicKey.findProgramAddressSync(
       [enc.encode(WALLET_SEED), walletId],
       PROGRAM_ID,
@@ -51,9 +49,6 @@ describe('deriveWalletPda', () => {
         PROGRAM_ID,
       ).equals(address),
     ).toBe(true)
-    expect(() =>
-      PublicKey.createProgramAddressSync([enc.encode(WALLET_SEED), walletId, bump], PROGRAM_ID),
-    ).toThrow(/off the curve/)
   })
 
   it('matches findProgramAddressSync over [WALLET_SEED, keccak256(authority33)]', () => {

@@ -260,6 +260,14 @@ const RECOMPUTE: Record<string, Recompute> = {
   },
 }
 
+/** The entry point for a vector, by its name stem; a missing one names the stem. */
+const recomputeFor = (vectorName: string): Recompute => {
+  const stem = vectorName.replace(/_(local|devnet|mainnet)$/, '')
+  const recompute = RECOMPUTE[stem]
+  if (!recompute) throw new Error(`no compute*Message entry point for vector stem '${stem}'`)
+  return recompute
+}
+
 describe('signed-message KATs', () => {
   it('carries 57 vectors (19 operations × 3 deployment domains)', () => {
     // A shrunken fixture must not quietly pass as "all vectors matched".
@@ -307,16 +315,9 @@ describe('every compute*Message entry point against the contract vectors', () =>
     )
   })
 
-  it.each(localVectors.map((v) => [v.name, v] as const))('%s', (_name, vector) => {
-    const recompute = RECOMPUTE[vector.name.slice(0, -'_local'.length)]!
-    const actual = recompute(vector.payload_parts_hex.map(hexToBytes), deploymentFor(vector.domain))
-    expect(hex(actual)).toBe(vector.keccak256_hex)
-  })
-
-  // The entry points must also track the domain, not just the local vectors.
-  it.each(fixture.vectors.map((v) => [v.name, v] as const))('%s (all domains)', (_name, vector) => {
-    const stem = vector.name.replace(/_(local|devnet|mainnet)$/, '')
-    const actual = RECOMPUTE[stem]!(
+  // Every vector, every domain: the entry points must track the domain too.
+  it.each(fixture.vectors.map((v) => [v.name, v] as const))('%s', (_name, vector) => {
+    const actual = recomputeFor(vector.name)(
       vector.payload_parts_hex.map(hexToBytes),
       deploymentFor(vector.domain),
     )

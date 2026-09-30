@@ -8,7 +8,7 @@
 // TS / Swift / Rust byte-identical (see ARCHITECTURE.md).
 // ─────────────────────────────────────────────────────────────────────────
 
-// ── MachineWallet protocol constants ─────────────────────────────────────
+// ── Deployment + client signing-window policy ────────────────────────────
 export {
   MACHINE_WALLET_PROGRAM_ADDRESS,
   MACHINE_WALLET_VAULT_SEED,
@@ -17,11 +17,48 @@ export {
   ADD_AUTHORITY_CEREMONY_SLOT_WINDOW,
 } from './protocol'
 
+// ── Program constants (each mirrors one line of machine-wallet) ──────────
+export {
+  WALLET_ACCOUNT_TAG,
+  SESSION_ACCOUNT_TAG,
+  RETIRED_ACCOUNT_TAGS,
+  MAX_AUTHORITIES,
+  MAX_ALLOWED_PROGRAMS,
+  MAX_CASH_MINTS,
+  MAX_SLEEVE_MINTS,
+  MAX_EPHEMERAL_SIGNERS,
+  MAX_INNER_INSTRUCTIONS,
+  MAX_CLIENT_DATA_JSON_SIZE,
+  MAX_SIGNATURE_TTL_SLOTS,
+  MAX_SESSION_LIFETIME_SLOTS,
+  RECOVERY_DELAY_SLOTS,
+  SESSION_FLAG_NET_EXPOSURE,
+  SESSION_FLAGS_KNOWN,
+  NATIVE_SOL_MINT,
+  isNativeSolMint,
+  AUTHORITY_SLOT_SIZE,
+  WALLET_HEADER_SIZE,
+  SESSION_HEADER_SIZE,
+  CASH_MINT_STATE_SIZE,
+  SLEEVE_ENTRY_SIZE,
+} from './wire-format/constants'
+
+// ── Program error codes ──────────────────────────────────────────────────
+export {
+  MachineWalletError,
+  RETIRED_ERROR_CODES,
+  describeMachineWalletError,
+} from './wire-format/errors'
+export type { MachineWalletErrorName, MachineWalletErrorCode } from './wire-format/errors'
+
+// ── PDA derivation ───────────────────────────────────────────────────────
+export { deriveWalletPda, deriveSessionPda } from './wire-format/pda'
+export type { ProgramAddress } from './wire-format/pda'
+
 // ── Ephemeral signer PDA derivation (Squads-v4 model) ────────────────────
 export {
   deriveEphemeralSigners,
   EPHEMERAL_SIGNER_SEED_PREFIX,
-  MAX_EPHEMERAL_SIGNERS,
 } from './ephemeral-signers'
 export type {
   EphemeralSigner,
@@ -38,9 +75,19 @@ export {
   AUTHORITY_PUBKEY_SIZE,
   SigScheme,
   effectiveAuthorityKey,
+  isRoot,
+  findAuthority,
 } from './wallet-state'
-export { AUTHORITY_SLOT_SIZE } from './wire-format/constants'
 export type { MachineWalletState, SigSchemeValue, WalletAuthoritySlot } from './wallet-state'
+
+// ── On-chain SessionState account + liveness ─────────────────────────────
+export {
+  parseSessionState,
+  sessionAccountSize,
+  isSessionLive,
+  sessionSolPolicy,
+} from './wire-format/session-state'
+export type { SessionState, CashMintState, SleeveEntry } from './wire-format/session-state'
 
 // ── MachineWallet wire format (single source of truth for popup + contract) ──
 export { MachineWalletDisc, REJECTED_DISCS } from './wire-format/disc'
@@ -150,7 +197,6 @@ export type { CashMintPolicy, SessionParams } from './wire-format/session'
 export { buildSecp256r1PrecompileIxData } from './wire-format/secp256r1'
 export {
   SOULPASS_RP_ID,
-  MAX_CLIENT_DATA_JSON_SIZE,
   PRODUCTION_WEBAUTHN_ORIGIN,
   TEST_WEBAUTHN_ORIGIN,
   allowedWebAuthnOrigins,

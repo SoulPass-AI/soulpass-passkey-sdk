@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.6.0 — 2026-09-30（machine-wallet 单一布局）
+
+`./protocol` 与 machine-wallet `feat/session-alignment` 程序逐字节对齐。钱包账户、
+session 账户、签名消息、指令各只有一种形态：没有版本字段，没有 v1/v2/v0 分支。
+
+### 账户布局
+
+- **钱包（byte 0 = `'W'`）**：170 字节头（`bump`、`wallet_id`、`threshold`、
+  `authority_count`、`nonce`、`creation_slot`、`vault_bump`、`root`、
+  `authority_epoch`、`pending_root`、`recovery_eta`、`vault`、`recovery_threshold`）
+  + `authority_count` 个 34 字节 authority 槽。`parseWalletState` 只接受
+  `walletAccountSize(count)` 字节，拒绝程序 `deserialize` 拒绝的一切；待定 root
+  在 eta 为 0 时照样接受（与程序一致）。`MachineWalletState` 字段即上述头字段 +
+  `authorities`；`isRoot` / `findAuthority`。
+- **Session（byte 0 = `'S'`）**：`parseSessionState` / `sessionAccountSize(P, C)`；
+  `isSessionLive` 与 `SessionExecute` 同判：未撤销、`slot <= expirySlot`（到期槽
+  当槽仍有效）、`walletCreationSlot` 与 `authorityEpoch` 仍与钱包相等；session 与
+  钱包是否配对由调用方负责。`sessionSolPolicy` 取 SOL 预算。
+
+### 签名消息与指令
+
+- 19 个操作的 `compute*Message`（标签均为 `_v1`，见 `MACHINE_WALLET_TAGS`）：
+  含 `computeRemoveSelfMessage` / `computeRemoveOtherMessage`、恢复三件
+  （propose / cancel / execute）、`computeSetRecoveryThresholdMessage`、
+  `computeBumpEpochMessage`。`computeOwnerCloseSessionMessage` 不含 destination
+  （租金固定退回 session 记录的 rent payer）。
+- 完整 disc 表 `MachineWalletDisc`（0–12、15–17、20–24）与 `REJECTED_DISCS`
+  （13、14、18、19）；每条指令一个 `build*IxData` 及其账户表（`*_ACCOUNTS`）。
+- 所有 builder 统一取单个对象参数（含 `maxSlot`），宽度或字节越界抛 `RangeError`。
+  `buildCreateSessionIxData({ maxSlot, ...params })`。
+- `buildExecuteIxData`：省略 `ephemeralSignerBumps` 为 Execute（disc 1），1..=4 个
+  bump 为 ExecuteWithEphemeralSigners（disc 16），空数组抛错。
+- Session 参数：`CashMintPolicy`、`SessionParams`、`validateSessionParams`、
+  `hashSessionData`。校验顺序与链上一致（解码器的 program 数量、cash 数量先于
+  handler 的字段检查），多处违规时报出程序会报的那一个。
+
+### 常量、错误码、PDA
+
+- 程序常量（`wire-format/constants.ts`）：账户标签、容量上限、槽数、头尺寸、
+  `NATIVE_SOL_MINT` + `isNativeSolMint` 等，每个值只定义一处。
+- 程序错误码：`MachineWalletError`、`RETIRED_ERROR_CODES`、`describeMachineWalletError`。
+- `deriveWalletPda` / `deriveSessionPda`。
+
+### 已删除
+
+`WALLET_LAYOUT_V1/V2`、`V1_*` 偏移、`*_V2_TAG` 与 `ADOPT_ROOT_TAG` /
+`REMOVE_AUTHORITY_TAG`、`compute*V2Message` / `computeAdoptRootMessage` /
+`computeRemoveAuthorityMessage`、`hashSessionDataV2`、`SessionV2Params`、
+`SessionCashPolicy`（即 `CashMintPolicy`）、`buildCreateSessionV2IxData`、
+`buildAdoptRootIxData`、`MAX_SESSION_ALLOWED_PROGRAMS` / `MAX_SESSION_CASH_MINTS`
+（即 `MAX_ALLOWED_PROGRAMS` / `MAX_CASH_MINTS`），以及 `src/wire-format/session-v2.ts`。
+
+### 其他
+
+- `./payments`：direct 支付凭证的 sessionStorage 键改为
+  `soulpass_direct_payment_capability:<id>`。
+- KAT：`signed_message_kat.json`（57 条 = 19 操作 × 3 域）、`session_data_kat.json`、
+  `layout_kat.json` 均逐字节取自程序，`npm test` 校验副本新鲜度。
+
 ## 0.5.1 — 2026-09-29（读 v2 钱包）
 
 ### Fixed

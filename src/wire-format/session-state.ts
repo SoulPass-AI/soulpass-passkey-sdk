@@ -41,14 +41,15 @@ import {
   MAX_ALLOWED_PROGRAMS,
   MAX_CASH_MINTS,
   MAX_SLEEVE_MINTS,
-  NATIVE_SOL_MINT,
+  isNativeSolMint,
   SESSION_ACCOUNT_TAG,
   SESSION_FLAGS_KNOWN,
   SESSION_HEADER_SIZE,
   SLEEVE_ENTRY_SIZE,
 } from './constants';
+import { bytesEqual } from './_bytes';
 import type { CashMintPolicy } from './session';
-import { bytesEqual, isKnownSigScheme, type MachineWalletState, type WalletAuthoritySlot } from '../wallet-state';
+import { isKnownSigScheme, type MachineWalletState, type WalletAuthoritySlot } from '../wallet-state';
 
 /** A session's per-mint budget: the signed policy plus the program's running counters. */
 export interface CashMintState extends CashMintPolicy {
@@ -253,7 +254,7 @@ export function parseSessionState(data: Uint8Array): SessionState {
     }
     cash.push(e);
   }
-  if (!cash.some((c) => bytesEqual(c.mint, NATIVE_SOL_MINT))) {
+  if (!cash.some((c) => isNativeSolMint(c.mint))) {
     throw new Error('SessionState has no SOL budget (NATIVE_SOL_MINT entry)');
   }
 
@@ -316,5 +317,5 @@ export function isSessionLive(s: SessionState, wallet: MachineWalletState, curre
 
 /** The session's SOL budget: the cash entry under {@link NATIVE_SOL_MINT}. */
 export function sessionSolPolicy(s: SessionState): CashMintState | undefined {
-  return s.cash.find((c) => bytesEqual(c.mint, NATIVE_SOL_MINT));
+  return s.cash.find((c) => isNativeSolMint(c.mint));
 }

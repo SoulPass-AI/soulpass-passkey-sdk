@@ -16,12 +16,6 @@ import type { MachineWalletDeployment } from './signed-message';
  */
 export const SOULPASS_RP_ID = 'soulpass.ai';
 
-/**
- * Maximum clientDataJSON size accepted by the on-chain disc=15 sidecar
- * parser (mirrors `MAX_CLIENT_DATA_JSON_SIZE`).
- */
-export const MAX_CLIENT_DATA_JSON_SIZE = 1024;
-
 /** The production wallet origin — the only one a mainnet deployment accepts. */
 export const PRODUCTION_WEBAUTHN_ORIGIN = 'https://soulpass.ai';
 

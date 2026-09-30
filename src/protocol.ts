@@ -1,13 +1,16 @@
 /**
- * MachineWallet protocol constants — mirror machine-wallet/program/src/lib.rs
- * + execute.rs. Dep-free strings/numbers so the SDK core stays free of
- * @solana/web3.js; the solana adapter wraps what needs PublicKey.
+ * Client-side MachineWallet deployment constants and signing-window policy.
+ * Dep-free strings/numbers so the SDK core stays free of @solana/web3.js; the
+ * solana adapter wraps what needs PublicKey. Values that mirror a program
+ * constant live in `wire-format/constants.ts`.
  */
+
+import { VAULT_SEED } from './wire-format/constants';
 
 export const MACHINE_WALLET_PROGRAM_ADDRESS = 'SouLi11jcPZGRS1yBfJDxcrDAWHNvJeSwph8pxZWzYw';
 
-/** PDA seed for the system-owned vault (mirrors on-chain `machine_vault`). */
-export const MACHINE_WALLET_VAULT_SEED = 'machine_vault';
+/** PDA seed for the system-owned vault (`MachineWallet::VAULT_SEED_PREFIX`). */
+export const MACHINE_WALLET_VAULT_SEED = VAULT_SEED;
 
 /** Signature validity window in slots (mirrors on-chain `max_slot` policy). */
 export const MAX_SLOT_WINDOW = 150n;

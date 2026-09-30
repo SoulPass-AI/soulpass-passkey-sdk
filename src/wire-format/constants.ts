@@ -43,9 +43,16 @@ export const SESSION_FLAGS_KNOWN = 0x01;
 
 /**
  * `state::NATIVE_SOL_MINT`: the all-zero mint under which a session carries
- * its SOL budget. Callers must not mutate it.
+ * its SOL budget. A typed array cannot be frozen, so callers must not mutate
+ * it; the SDK's own checks go through {@link isNativeSolMint}, which never
+ * reads this array, so a mutation cannot change what they accept.
  */
 export const NATIVE_SOL_MINT: Uint8Array = new Uint8Array(32);
+
+/** True when `mint` is the 32-byte all-zero {@link NATIVE_SOL_MINT}. */
+export function isNativeSolMint(mint: Uint8Array): boolean {
+  return mint.length === 32 && mint.every((b) => b === 0);
+}
 
 /** `state::AUTHORITY_SLOT_SIZE`: `sig_scheme(1) || pubkey(33)`. */
 export const AUTHORITY_SLOT_SIZE = 34;

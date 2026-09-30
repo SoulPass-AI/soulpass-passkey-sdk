@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { describe, it, expect } from 'vitest'
+import { keccak_256 } from '@noble/hashes/sha3'
 import { bytesToHex as hex, hexToBytes } from '@noble/hashes/utils'
 import {
   CASH_MINT_POLICY_WIRE_LEN,
@@ -134,13 +135,13 @@ describe('buildCreateSessionIxData against layout_kat.json', () => {
   it('ix_create_session_disc4 is byte-identical (374 B)', () => {
     expect(v).toBeDefined()
     const { maxSlot, params } = paramsFromLayout(v)
-    const data = buildCreateSessionIxData(maxSlot, params)
+    const data = buildCreateSessionIxData({ maxSlot, ...params })
     expect(data).toHaveLength(374)
     expect(data).toHaveLength(v.length)
     expect(data[0]).toBe(4)
     expect(hex(data)).toBe(v.bytes_hex)
-    // The tail after disc + max_slot is exactly what the hash covers.
-    expect(data.length).toBe(1 + 8 + 32 + 8 + 1 + 32 * 2 + 32 + 1 + 33 + 1 + 1 + 64 * 3)
+    // The tail after disc + max_slot is exactly the preimage the hash covers.
+    expect(hex(keccak_256(data.slice(9)))).toBe(hex(hashSessionData(params)))
   })
 
   it('account table matches the program', () => {
@@ -177,10 +178,11 @@ describe('sessionParamsValidation', () => {
     cash: [sol, usdc],
   }
   const expectChainError = (p: SessionParams, name: string) => {
-    expect(() => validateSessionParams(p)).toThrow(new RegExp(`^${name.replace(/[()]/g, '\\$&')}`))
+    const startsWithName = new RegExp(`^${name.replace(/[()]/g, '\\$&')}`)
+    expect(() => validateSessionParams(p)).toThrow(startsWithName)
     // The hash and the builder refuse the same parameters.
-    expect(() => hashSessionData(p)).toThrow(new RegExp(`^${name.replace(/[()]/g, '\\$&')}`))
-    expect(() => buildCreateSessionIxData(1n, p)).toThrow(new RegExp(`^${name.replace(/[()]/g, '\\$&')}`))
+    expect(() => hashSessionData(p)).toThrow(startsWithName)
+    expect(() => buildCreateSessionIxData({ maxSlot: 1n, ...p })).toThrow(startsWithName)
   }
 
   it('accepts a well-formed budget (flags 0 and 1)', () => {
@@ -228,6 +230,14 @@ describe('sessionParamsValidation', () => {
   it('duplicate program / zero session authority → InvalidSessionData', () => {
     expectChainError({ ...base, allowedPrograms: [base.allowedPrograms[0]!, base.allowedPrograms[0]!] }, 'InvalidSessionData(allowedPrograms)')
     expectChainError({ ...base, sessionAuthority: new Uint8Array(32) }, 'InvalidSessionData(sessionAuthority)')
+  })
+
+  it('reports the fault the chain would when several are present (decoder counts first)', () => {
+    const zeroAuthority = new Uint8Array(32)
+    expectChainError({ ...base, sessionAuthority: zeroAuthority, allowedPrograms: [] }, 'TooManyAllowedPrograms')
+    const sixCash = [sol, ...Array.from({ length: 5 }, (_, i) => ({ ...sol, mint: new Uint8Array(32).fill(0xc0 + i) }))]
+    expectChainError({ ...base, sessionAuthority: zeroAuthority, cash: sixCash }, 'TooManyCashMints')
+    expectChainError({ ...base, allowedPrograms: [], cash: sixCash }, 'TooManyAllowedPrograms')
   })
 
   it('wrong-width fields throw RangeError', () => {
