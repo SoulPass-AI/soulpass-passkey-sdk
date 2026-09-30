@@ -34,10 +34,12 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set<string>(
 const DEFAULT_DIRECT_NETWORKS = [
   'SOLANA', 'BASE', 'ETHEREUM', 'BSC', 'POLYGON', 'ARBITRUM', 'HYPEREVM', 'ROBINHOOD',
 ] as const
-// sessionStorage record: JSON `{ clientSecret, displayToken }` for a direct
-// payment pending in this tab. A record that does not parse as that shape is
-// treated as absent (see readDirectSecret).
-const DIRECT_SECRET_STORAGE_PREFIX = 'soulpass_direct_payment_capability:'
+// v2: the record became JSON `{ clientSecret, displayToken }` when the wallet
+// popup started fetching canonical intent state with a display-scoped token.
+// v1 (bare secret string) records are simply ignored — they only ever covered
+// a payment pending in this same tab, so none can meaningfully survive a
+// version bump of the SDK bundle.
+const DIRECT_SECRET_STORAGE_PREFIX = 'soulpass_direct_payment_v2:'
 
 /** The per-intent capabilities the SDK holds while a direct payment is pending. */
 interface DirectPaymentCapability {
