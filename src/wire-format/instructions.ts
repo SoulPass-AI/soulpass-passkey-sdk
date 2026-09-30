@@ -165,8 +165,9 @@ export function buildCloseSessionIxData(): Uint8Array {
  * `newThreshold` defaults to 0. The program accepts only 0 or the current
  * threshold (`validate_new_threshold`), both meaning "unchanged". The handler
  * hashes the byte it decoded, so this value MUST equal the `newThreshold` the
- * owners signed in `computeAddAuthorityMessage` — a ceremony signed with the
- * current threshold (as the Swift SDK does) needs that same value here.
+ * owners signed in `computeAddAuthorityMessage`. The web wallet and the Swift
+ * SDK both sign and build `new_threshold` 0 through one constant; a ceremony
+ * that signed any other value needs that same value here.
  */
 export function buildAddAuthorityIxData(args: {
   newSigScheme: number;
