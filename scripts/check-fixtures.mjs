@@ -18,14 +18,14 @@ const swiftKitFixtures = resolve(here, '../../soulpass-swift-sdk/Tests/SoulPassK
 const localFixtures = resolve(here, '../tests/fixtures')
 
 // Every fixture this repo copies from the Swift SDK, with the Swift directory
-// it lives in. Extend when a new shared-vector file lands. The machine-wallet
-// v2 vectors (session_data_v2_kat / v2_layout_kat) are verbatim copies of
-// machine-wallet `program/tests/vectors/`, as the Swift SDK's are.
+// it lives in. Extend when a new shared-vector file lands. The three
+// machine-wallet KATs keep the program's own file names and are verbatim
+// copies of machine-wallet `program/tests/vectors/`, as the Swift SDK's are.
 const SHARED = [
   ['p256-compression-vectors.json', swiftFixtures],
-  ['signed-message-kat-vectors.json', swiftFixtures],
-  ['session_data_v2_kat.json', swiftKitFixtures],
-  ['v2_layout_kat.json', swiftKitFixtures],
+  ['signed_message_kat.json', swiftFixtures],
+  ['session_data_kat.json', swiftKitFixtures],
+  ['layout_kat.json', swiftKitFixtures],
 ]
 
 if (!existsSync(swiftFixtures)) {
