@@ -23,10 +23,10 @@ import type {
   VaultPdaKey,
 } from '../types'
 import { asStatePdaKey, asVaultPdaKey } from '../types'
-import { MACHINE_WALLET_PROGRAM_ADDRESS, MACHINE_WALLET_VAULT_SEED } from '../protocol'
+import { VAULT_SEED } from '../wire-format/constants'
+import { MACHINE_WALLET_PROGRAM_ID } from '../wire-format/pda'
 
-const MACHINE_WALLET_PROGRAM_ID = new PublicKey(MACHINE_WALLET_PROGRAM_ADDRESS)
-const MACHINE_VAULT_SEED_BYTES = new TextEncoder().encode(MACHINE_WALLET_VAULT_SEED)
+const MACHINE_VAULT_SEED_BYTES = new TextEncoder().encode(VAULT_SEED)
 
 // --- Trust-boundary validators ---
 //

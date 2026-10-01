@@ -15,8 +15,7 @@
 // Stamp the brand with `validateVaultPda` / `validateStatePda`: they throw on
 // anything that is not a canonical 32-byte base58 key, so a corrupted or
 // XSS-doctored value (sessionStorage rehydration, dApp user input) fails at
-// the ingest site instead of leaking garbage downstream. The unchecked
-// `asVaultPda` / `asStatePda` casts are deprecated.
+// the ingest site instead of leaking garbage downstream.
 
 // `import type` only — types.ts must stay peerDep-free at runtime so SDK
 // users who consume just the wire-format pieces don't pay the
@@ -69,18 +68,6 @@ export function validateStatePda(s: string): StatePda {
   return s as StatePda
 }
 
-/**
- * Unchecked cast of a raw base58 to {@link VaultPda}.
- * @deprecated Use {@link validateVaultPda}, which rejects malformed input.
- * Kept for source compatibility; removed in the next major.
- */
-export function asVaultPda(addr: string): VaultPda { return addr as VaultPda }
-/**
- * Unchecked cast of a raw base58 to {@link StatePda}.
- * @deprecated Use {@link validateStatePda}, which rejects malformed input.
- * Kept for source compatibility; removed in the next major.
- */
-export function asStatePda(addr: string): StatePda { return addr as StatePda }
 /** Cast a {@link PublicKey} to {@link VaultPdaKey}. Caller asserts the value is a vault PDA. */
 export function asVaultPdaKey(pk: PublicKey): VaultPdaKey { return pk as VaultPdaKey }
 /** Cast a {@link PublicKey} to {@link StatePdaKey}. Caller asserts the value is a state PDA. */

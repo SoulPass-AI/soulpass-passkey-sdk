@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   MACHINE_WALLET_PROGRAM_ADDRESS,
-  MACHINE_WALLET_VAULT_SEED,
   MAX_SLOT_WINDOW,
   SOLANA_SLOT_MS,
   ADD_AUTHORITY_CEREMONY_SLOT_WINDOW,
@@ -10,9 +9,6 @@ import {
 describe('protocol constants', () => {
   it('pins the machine-wallet program id', () => {
     expect(MACHINE_WALLET_PROGRAM_ADDRESS).toBe('SouLi11jcPZGRS1yBfJDxcrDAWHNvJeSwph8pxZWzYw');
-  });
-  it('pins the vault PDA seed', () => {
-    expect(MACHINE_WALLET_VAULT_SEED).toBe('machine_vault');
   });
   it('pins the execute slot window at 150 slots', () => {
     expect(MAX_SLOT_WINDOW).toBe(150n);

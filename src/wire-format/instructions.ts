@@ -94,7 +94,7 @@ export const CREATE_WALLET_ACCOUNTS = ['instructions_sysvar', 'payer (s)', 'wall
  * de-duplicated remaining accounts (`encodeRemainingAccounts`) follow, in the
  * order their `index` bytes name them.
  */
-export const EXECUTE_ACCOUNTS = ['instructions_sysvar', 'wallet (w)', 'fee_payer (s)', 'vault (w)', '…remaining'] as const;
+export const EXECUTE_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'vault (w)', '…remaining'] as const;
 /**
  * SessionExecute (5), `session_execute.rs`: `authority` is the session key;
  * the wallet is read-only; the de-duplicated remaining accounts
@@ -215,15 +215,11 @@ export function buildOwnerCloseSessionIxData(args: { maxSlot: bigint; sessionAut
 }
 
 /**
- * RotateRoot (17): `[17] || max_slot || new_root_sig_scheme || new_root_pubkey(33)` — 43 B.
+ * RotateRoot (17): `[17] || max_slot || sig_scheme || pubkey(33)` — 43 B (the new root).
  * The new root must already be a registered authority; signed by the current root.
  */
-export function buildRotateRootIxData(args: {
-  maxSlot: bigint;
-  newRootSigScheme: number;
-  newRootPubkey: Uint8Array;
-}): Uint8Array {
-  return maxSlotKey(MachineWalletDisc.RotateRoot, args.maxSlot, args.newRootSigScheme, args.newRootPubkey, 'newRoot');
+export function buildRotateRootIxData(args: AuthorityKeyOperand & { maxSlot: bigint }): Uint8Array {
+  return maxSlotKey(MachineWalletDisc.RotateRoot, args.maxSlot, args.sigScheme, args.pubkey, 'new root');
 }
 
 /** ProposeRecovery (20): `[20] || max_slot || sig_scheme || pubkey(33)` — 43 B (the proposed root). */

@@ -7,6 +7,8 @@
  * The ephemeral-signer seed lives in `../ephemeral-signers.ts`.
  */
 
+import { isAllZero } from './_bytes';
+
 /** `state::WALLET_ACCOUNT_TAG` (`b'W'`): byte 0 of every MachineWallet account. */
 export const WALLET_ACCOUNT_TAG = 0x57;
 /** `state::SESSION_ACCOUNT_TAG` (`b'S'`): byte 0 of every SessionState account. */
@@ -51,11 +53,13 @@ export const NATIVE_SOL_MINT: Uint8Array = new Uint8Array(32);
 
 /** True when `mint` is the 32-byte all-zero {@link NATIVE_SOL_MINT}. */
 export function isNativeSolMint(mint: Uint8Array): boolean {
-  return mint.length === 32 && mint.every((b) => b === 0);
+  return mint.length === 32 && isAllZero(mint);
 }
 
+/** Stored pubkey width, one byte after the slot's `sig_scheme` tag. */
+export const AUTHORITY_PUBKEY_SIZE = 33;
 /** `state::AUTHORITY_SLOT_SIZE`: `sig_scheme(1) || pubkey(33)`. */
-export const AUTHORITY_SLOT_SIZE = 34;
+export const AUTHORITY_SLOT_SIZE = 1 + AUTHORITY_PUBKEY_SIZE;
 /** `MachineWallet::HEADER_SIZE`. */
 export const WALLET_HEADER_SIZE = 170;
 /** `SessionState::HEADER_SIZE`. */

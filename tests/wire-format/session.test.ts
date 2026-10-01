@@ -18,14 +18,12 @@ import {
   CASH_MINT_POLICY_WIRE_LEN,
   CREATE_SESSION_ACCOUNTS,
   buildCreateSessionIxData,
-  computeCreateSessionMessage,
   encodeCashMintPolicy,
   hashSessionData,
   validateSessionParams,
   type CashMintPolicy,
   type SessionParams,
 } from '../../src/wire-format/session'
-import { computeCreateSessionMessage as authorityCreateSessionMessage } from '../../src/wire-format/authority-messages'
 import { NATIVE_SOL_MINT } from '../../src/wire-format/constants'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), '../fixtures')
@@ -152,10 +150,6 @@ describe('buildCreateSessionIxData against layout_kat.json', () => {
       'session (w)',
       'system_program',
     ])
-  })
-
-  it('re-exports computeCreateSessionMessage from authority-messages', () => {
-    expect(computeCreateSessionMessage).toBe(authorityCreateSessionMessage)
   })
 })
 

@@ -87,8 +87,8 @@ describe('builders against layout_kat.json', () => {
     const { u64, u8, field } = vector('ix_rotate_root_disc17')
     const data = buildRotateRootIxData({
       maxSlot: u64('max_slot_le'),
-      newRootSigScheme: u8('sig_scheme'),
-      newRootPubkey: field('pubkey'),
+      sigScheme: u8('sig_scheme'),
+      pubkey: field('pubkey'),
     })
     expectKat('ix_rotate_root_disc17', data, MachineWalletDisc.RotateRoot)
     expect(data).toHaveLength(43)
@@ -219,7 +219,7 @@ describe('builders pinned to the decoder lengths', () => {
   it('rejects wrong-width keys and out-of-range bytes', () => {
     expect(() => buildCreateWalletIxData({ maxSlot: 1n, sigScheme: 0, authority: key32 })).toThrow(RangeError)
     expect(() => buildRevokeSessionIxData({ maxSlot: 1n, sessionAuthority: pk33 })).toThrow(RangeError)
-    expect(() => buildRotateRootIxData({ maxSlot: 1n, newRootSigScheme: 0, newRootPubkey: key32 })).toThrow(RangeError)
+    expect(() => buildRotateRootIxData({ maxSlot: 1n, sigScheme: 0, pubkey: key32 })).toThrow(RangeError)
     expect(() => buildSetThresholdIxData({ newThreshold: 256, maxSlot: 1n })).toThrow(RangeError)
     expect(() =>
       buildRemoveAuthorityIxData({ sigScheme: 0, pubkey: key32, newThreshold: 1, maxSlot: 1n }),

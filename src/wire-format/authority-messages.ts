@@ -88,17 +88,26 @@ export interface AuthorityMessageBase {
   deployment: MachineWalletDeployment;
 }
 
-/**
- * The shared preamble bytes. Exported for `operation-hash.ts`, whose Execute
- * messages share this exact preamble (see the module doc above).
- */
-export function authorityPayload(base: AuthorityMessageBase): Uint8Array[] {
+/** The shared preamble bytes (see the module doc above). */
+function authorityPayload(base: AuthorityMessageBase): Uint8Array[] {
   return [
     base.walletPDA.toBytes(),
     u64LE(base.creationSlot),
     u64LE(base.nonce),
     u64LE(base.maxSlot),
   ];
+}
+
+/**
+ * Hash `tag` over the shared preamble followed by `operands`. Exported for
+ * `operation-hash.ts`, whose Execute messages share this exact preamble.
+ */
+export function hashGoverned(tag: Uint8Array, base: AuthorityMessageBase, ...operands: Uint8Array[]): Uint8Array {
+  return hashSignedMessage({
+    deployment: base.deployment,
+    tag,
+    payloadParts: [...authorityPayload(base), ...operands],
+  });
 }
 
 /**
@@ -135,51 +144,34 @@ export function computeCreateWalletMessage(args: {
 export function computeCloseWalletMessage(
   args: AuthorityMessageBase & { destination: Uint8Array },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: CLOSE_WALLET_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireLength(args.destination, 32, 'destination'),
-    ],
-  });
+  return hashGoverned(CLOSE_WALLET_TAG, args, requireLength(args.destination, 32, 'destination'));
 }
 
 /** AdvanceNonce: the bare preamble. */
 export function computeAdvanceNonceMessage(args: AuthorityMessageBase): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: ADVANCE_NONCE_TAG,
-    payloadParts: authorityPayload(args),
-  });
+  return hashGoverned(ADVANCE_NONCE_TAG, args);
 }
 
 /** CreateSession: preamble `|| session_data_hash(32)`. */
 export function computeCreateSessionMessage(
   args: AuthorityMessageBase & { sessionDataHash: Uint8Array },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: CREATE_SESSION_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireLength(args.sessionDataHash, 32, 'sessionDataHash'),
-    ],
-  });
+  return hashGoverned(
+    CREATE_SESSION_TAG,
+    args,
+    requireLength(args.sessionDataHash, 32, 'sessionDataHash'),
+  );
 }
 
 /** RevokeSession (owner path): preamble `|| session_authority(32)`. */
 export function computeRevokeSessionMessage(
   args: AuthorityMessageBase & { sessionAuthority: Uint8Array },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: REVOKE_SESSION_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireLength(args.sessionAuthority, 32, 'sessionAuthority'),
-    ],
-  });
+  return hashGoverned(
+    REVOKE_SESSION_TAG,
+    args,
+    requireLength(args.sessionAuthority, 32, 'sessionAuthority'),
+  );
 }
 
 /**
@@ -191,14 +183,11 @@ export function computeRevokeSessionMessage(
 export function computeOwnerCloseSessionMessage(
   args: AuthorityMessageBase & { sessionAuthority: Uint8Array },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: OWNER_CLOSE_SESSION_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireLength(args.sessionAuthority, 32, 'sessionAuthority'),
-    ],
-  });
+  return hashGoverned(
+    OWNER_CLOSE_SESSION_TAG,
+    args,
+    requireLength(args.sessionAuthority, 32, 'sessionAuthority'),
+  );
 }
 
 /**
@@ -212,16 +201,13 @@ export function computeAddAuthorityMessage(
     newThreshold: number;
   },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: ADD_AUTHORITY_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.newSigScheme, 'newSigScheme'),
-      requireLength(args.newPubkey, 33, 'newPubkey'),
-      requireByte(args.newThreshold, 'newThreshold'),
-    ],
-  });
+  return hashGoverned(
+    ADD_AUTHORITY_TAG,
+    args,
+    requireByte(args.newSigScheme, 'newSigScheme'),
+    requireLength(args.newPubkey, 33, 'newPubkey'),
+    requireByte(args.newThreshold, 'newThreshold'),
+  );
 }
 
 /**
@@ -240,15 +226,12 @@ export function computeAddAuthorityMessage(
 export function computeAddAuthorityPopMessage(
   args: AuthorityMessageBase & { newSigScheme: number; newPubkey: Uint8Array },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: ADD_AUTHORITY_POP_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.newSigScheme, 'newSigScheme'),
-      requireLength(args.newPubkey, 33, 'newPubkey'),
-    ],
-  });
+  return hashGoverned(
+    ADD_AUTHORITY_POP_TAG,
+    args,
+    requireByte(args.newSigScheme, 'newSigScheme'),
+    requireLength(args.newPubkey, 33, 'newPubkey'),
+  );
 }
 
 /** Operands naming one authority slot: `sig_scheme(1) || pubkey(33)`. */
@@ -270,15 +253,12 @@ function keyOperand(args: AuthorityKeyOperand): Uint8Array[] {
 export function computeRemoveSelfMessage(
   args: AuthorityMessageBase & AuthorityKeyOperand & { newThreshold: number },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: REMOVE_SELF_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      ...keyOperand(args),
-      requireByte(args.newThreshold, 'newThreshold'),
-    ],
-  });
+  return hashGoverned(
+    REMOVE_SELF_TAG,
+    args,
+    ...keyOperand(args),
+    requireByte(args.newThreshold, 'newThreshold'),
+  );
 }
 
 /**
@@ -289,44 +269,29 @@ export function computeRemoveSelfMessage(
 export function computeRemoveOtherMessage(
   args: AuthorityMessageBase & AuthorityKeyOperand & { newThreshold: number },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: REMOVE_OTHER_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      ...keyOperand(args),
-      requireByte(args.newThreshold, 'newThreshold'),
-    ],
-  });
+  return hashGoverned(
+    REMOVE_OTHER_TAG,
+    args,
+    ...keyOperand(args),
+    requireByte(args.newThreshold, 'newThreshold'),
+  );
 }
 
 /** SetThreshold: preamble `|| new_threshold(1)`. */
 export function computeSetThresholdMessage(
   args: AuthorityMessageBase & { newThreshold: number },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: SET_THRESHOLD_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.newThreshold, 'newThreshold'),
-    ],
-  });
+  return hashGoverned(SET_THRESHOLD_TAG, args, requireByte(args.newThreshold, 'newThreshold'));
 }
 
-/** RotateRoot: preamble `|| new_root_sig_scheme(1) || new_root_pubkey(33)`. Signed by the current root. */
+/**
+ * RotateRoot: preamble `|| sig_scheme(1) || pubkey(33)` naming the new root,
+ * which must already be an authority. Signed by the current root.
+ */
 export function computeRotateRootMessage(
-  args: AuthorityMessageBase & { newRootSigScheme: number; newRootPubkey: Uint8Array },
+  args: AuthorityMessageBase & AuthorityKeyOperand,
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: ROTATE_ROOT_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.newRootSigScheme, 'newRootSigScheme'),
-      requireLength(args.newRootPubkey, 33, 'newRootPubkey'),
-    ],
-  });
+  return hashGoverned(ROTATE_ROOT_TAG, args, ...keyOperand(args));
 }
 
 /**
@@ -337,11 +302,7 @@ export function computeRotateRootMessage(
 export function computeProposeRecoveryMessage(
   args: AuthorityMessageBase & AuthorityKeyOperand,
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: PROPOSE_RECOVERY_TAG,
-    payloadParts: [...authorityPayload(args), ...keyOperand(args)],
-  });
+  return hashGoverned(PROPOSE_RECOVERY_TAG, args, ...keyOperand(args));
 }
 
 /**
@@ -352,20 +313,12 @@ export function computeProposeRecoveryMessage(
 export function computeExecuteRecoveryMessage(
   args: AuthorityMessageBase & AuthorityKeyOperand,
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: EXECUTE_RECOVERY_TAG,
-    payloadParts: [...authorityPayload(args), ...keyOperand(args)],
-  });
+  return hashGoverned(EXECUTE_RECOVERY_TAG, args, ...keyOperand(args));
 }
 
 /** CancelRecovery (root-signed veto): the bare preamble. */
 export function computeCancelRecoveryMessage(args: AuthorityMessageBase): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: CANCEL_RECOVERY_TAG,
-    payloadParts: authorityPayload(args),
-  });
+  return hashGoverned(CANCEL_RECOVERY_TAG, args);
 }
 
 /**
@@ -373,11 +326,7 @@ export function computeCancelRecoveryMessage(args: AuthorityMessageBase): Uint8A
  * invalidates every session created under the current authority epoch.
  */
 export function computeBumpEpochMessage(args: AuthorityMessageBase): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: BUMP_EPOCH_TAG,
-    payloadParts: authorityPayload(args),
-  });
+  return hashGoverned(BUMP_EPOCH_TAG, args);
 }
 
 /**
@@ -387,12 +336,9 @@ export function computeBumpEpochMessage(args: AuthorityMessageBase): Uint8Array 
 export function computeSetRecoveryThresholdMessage(
   args: AuthorityMessageBase & { recoveryThreshold: number },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: SET_RECOVERY_THRESHOLD_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.recoveryThreshold, 'recoveryThreshold'),
-    ],
-  });
+  return hashGoverned(
+    SET_RECOVERY_THRESHOLD_TAG,
+    args,
+    requireByte(args.recoveryThreshold, 'recoveryThreshold'),
+  );
 }

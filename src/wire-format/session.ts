@@ -13,12 +13,10 @@
  */
 
 import { keccak_256 } from '@noble/hashes/sha3';
-import { bytesEqual, concatBytes, requireByte, requireLength, u64LE } from './_bytes';
+import { bytesEqual, concatBytes, isAllZero, requireByte, requireLength, u64LE } from './_bytes';
 import { MAX_ALLOWED_PROGRAMS, MAX_CASH_MINTS, SESSION_FLAGS_KNOWN, isNativeSolMint } from './constants';
 import { MachineWalletDisc } from './disc';
 import type { MachineWalletErrorName } from './errors';
-
-export { computeCreateSessionMessage } from './authority-messages';
 
 /** On-chain `CashMintPolicy::WIRE_LEN`. */
 export const CASH_MINT_POLICY_WIRE_LEN = 64;
@@ -72,6 +70,14 @@ export interface SessionParams {
   cash: ReadonlyArray<CashMintPolicy>;
 }
 
+/**
+ * A zero cap is a dead budget; a zero period is a rollover hazard. The program
+ * rejects both at CreateSession (`InvalidCashCap`) and on every account read.
+ */
+export function hasZeroCashCap(c: CashMintPolicy): boolean {
+  return c.periodCap === 0n || c.lifetimeCap === 0n || c.periodSlots === 0n;
+}
+
 function chainError(name: MachineWalletErrorName, detail: string, tag?: string): Error {
   return new Error(`${name}${tag === undefined ? '' : `(${tag})`}: ${detail}`);
 }
@@ -108,7 +114,7 @@ export function validateSessionParams(p: SessionParams): void {
   }
 
   // Handler (create_session.rs).
-  if (p.sessionAuthority.every((b) => b === 0)) {
+  if (isAllZero(p.sessionAuthority)) {
     throw chainError('InvalidSessionData', 'sessionAuthority must not be all zero', 'sessionAuthority');
   }
   if ((p.flags & ~SESSION_FLAGS_KNOWN) !== 0) {
@@ -121,8 +127,7 @@ export function validateSessionParams(p: SessionParams): void {
   });
 
   p.cash.forEach((c, i) => {
-    // A zero cap is a dead budget; a zero period is a rollover hazard.
-    if (c.periodCap === 0n || c.lifetimeCap === 0n || c.periodSlots === 0n) {
+    if (hasZeroCashCap(c)) {
       throw chainError('InvalidCashCap', `cash[${i}]: periodCap, lifetimeCap and periodSlots must be non-zero`);
     }
     if (p.cash.slice(0, i).some((prev) => bytesEqual(prev.mint, c.mint))) {

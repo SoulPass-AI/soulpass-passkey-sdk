@@ -37,8 +37,7 @@ main bundle):
   (`VaultPda` / `StatePda` + `*Key` variants — exists to make "vault PDA in
   a state-PDA slot" a compile error instead of a recurring `0x7d2
   ConstraintSigner` bug; stamp them with the checking `validateVaultPda` /
-  `validateStatePda`, the unchecked `asVaultPda` / `asStatePda` are
-  deprecated), and in-app-browser detection.
+  `validateStatePda`), and in-app-browser detection.
 - **`./react`** — `SoulPassProvider` + `useSoulPass()`: owns a wallet
   instance, persists the connection to sessionStorage, restores on reload.
   `react` is an optional peer dependency.

@@ -74,3 +74,8 @@ export function concatBytes(parts: ReadonlyArray<Uint8Array>): Uint8Array {
 export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((x, i) => x === b[i]);
 }
+
+/** True when every byte is zero (vacuously true for an empty array). */
+export function isAllZero(bytes: Uint8Array): boolean {
+  return bytes.every((b) => b === 0);
+}

@@ -31,8 +31,6 @@ export type { VaultPda, StatePda, VaultPdaKey, StatePdaKey } from './types'
 export {
   validateVaultPda,
   validateStatePda,
-  asVaultPda,
-  asStatePda,
   asVaultPdaKey,
   asStatePdaKey,
 } from './types'

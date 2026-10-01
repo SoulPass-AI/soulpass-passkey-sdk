@@ -3,7 +3,7 @@ export { createSoulPassPayments } from './payments/factory'
 export type { CreateSoulPassPaymentsConfig } from './payments/factory'
 export { HttpPaymentIntentProvider } from './payments/http-provider'
 export { PaymentError, isPaymentError } from './payments/errors'
-export type { PaymentErrorCode, PaymentErrorContext } from './payments/errors'
+export type { PaymentErrorCode } from './payments/errors'
 // PaymentError extends SoulPassError, so a merchant catching a payment also
 // needs the base guard for wallet-side codes (USER_REJECTED, POPUP_CLOSED).
 export { SoulPassError, isSoulPassError } from './errors'

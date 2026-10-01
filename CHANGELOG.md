@@ -69,6 +69,12 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
   （原为 `…_v2`），disc 16 的签名哈希随之改变。
 - `computeOwnerCloseSessionMessage` 不再接受 `destination`。
 - `buildExecuteIxData` 传空 `ephemeralSignerBumps` 抛错（disc 1 请省略该字段）。
+- `computeRotateRootMessage` / `buildRotateRootIxData` 的新 root 改用
+  `AuthorityKeyOperand`（`sigScheme` / `pubkey`，与 ProposeRecovery 相同），
+  原 `newRootSigScheme` / `newRootPubkey` 删除。
+- `MACHINE_WALLET_VAULT_SEED` 删除，改用 `VAULT_SEED`（与 `WALLET_SEED` / `SESSION_SEED` 同列）。
+- `asVaultPda` / `asStatePda` 删除，改用 `validateVaultPda` / `validateStatePda`。
+- `./payments` 的 `PaymentErrorContext` 删除，改用 `SoulPassErrorContext`。
 
 ### 其他
 

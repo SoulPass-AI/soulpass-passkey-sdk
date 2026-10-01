@@ -2,8 +2,6 @@ import { SoulPassError, isPaymentErrorCode } from '../errors'
 import type { PaymentErrorCode, SoulPassErrorContext } from '../errors'
 
 export type { PaymentErrorCode }
-/** @deprecated Use {@link SoulPassErrorContext}. */
-export type PaymentErrorContext = SoulPassErrorContext
 
 /**
  * Payment-layer failure with enough context to recover safely.

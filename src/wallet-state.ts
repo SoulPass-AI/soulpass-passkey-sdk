@@ -14,13 +14,18 @@
 
 import type { Connection } from '@solana/web3.js'
 import type { StatePda, StatePdaKey } from './types'
-import { bytesEqual } from './wire-format/_bytes'
+import { bytesEqual, isAllZero } from './wire-format/_bytes'
 import {
   AUTHORITY_SLOT_SIZE,
   MAX_AUTHORITIES,
   WALLET_ACCOUNT_TAG,
   WALLET_HEADER_SIZE,
 } from './wire-format/constants'
+import { readKnownSlot, SigScheme, type WalletAuthoritySlot } from './wire-format/authority-slot'
+
+export { AUTHORITY_PUBKEY_SIZE } from './wire-format/constants'
+export { SigScheme } from './wire-format/authority-slot'
+export type { SigSchemeValue, WalletAuthoritySlot } from './wire-format/authority-slot'
 
 /**
  * `MachineWallet` header offsets (`state.rs`), all integers LE:
@@ -60,9 +65,6 @@ const OFFSET = {
   RECOVERY_THRESHOLD: 169,
 } as const
 
-/** Stored pubkey width, one byte after the slot's `sig_scheme` tag. */
-export const AUTHORITY_PUBKEY_SIZE = 33
-
 /** `AuthoritySlot::EMPTY.sig_scheme`: the pending-root slot when no recovery is pending. */
 const EMPTY_SLOT_SCHEME = 0xff
 
@@ -72,45 +74,6 @@ export function walletAccountSize(authorityCount: number): number {
     throw new RangeError(`walletAccountSize: authorityCount must be 0..=${MAX_AUTHORITIES}, got ${authorityCount}`)
   }
   return WALLET_HEADER_SIZE + authorityCount * AUTHORITY_SLOT_SIZE
-}
-
-/**
- * Authority signature schemes (mirror `state.rs::SIG_SCHEME_*`).
- * The chain routes a stored authority to its verifier by this tag;
- * **registering the wrong scheme silently locks the signer out**, so callers
- * should always use these named values rather than literal `0`/`1`/`2`.
- */
-export const SigScheme = {
-  /** Raw P-256 ECDSA — signer signs the 32-byte operation_hash directly. */
-  Secp256r1: 0,
-  /** Ed25519 — session keys + Ed25519 hardware. */
-  Ed25519: 1,
-  /** P-256 ECDSA via WebAuthn envelope — chain expects `auth_data ‖ sha256(cdj)`. */
-  Webauthn: 2,
-} as const
-
-export type SigSchemeValue = (typeof SigScheme)[keyof typeof SigScheme]
-
-/** `AuthoritySlot::is_known_scheme`. */
-export function isKnownSigScheme(b: number): b is SigSchemeValue {
-  return b === SigScheme.Secp256r1 || b === SigScheme.Ed25519 || b === SigScheme.Webauthn
-}
-
-/**
- * One decoded authority slot. `pubkey` is the raw 33-byte STORAGE form, which
- * is layout, not the key itself: `Secp256r1`/`Webauthn` slots hold a genuine
- * SEC1-compressed P-256 key, while `Ed25519` slots hold a 32-byte key padded
- * with a trailing `0x00`. Use {@link effectiveAuthorityKey} to cross from
- * storage form to the bytes a verifier actually consumes.
- */
-export interface WalletAuthoritySlot {
-  sigScheme: SigSchemeValue
-  /**
-   * 33-byte authority slot bytes (see storage-form note above). A **copy**,
-   * not a view onto the caller's buffer — deliberately, since parsed states
-   * get cached and a `subarray` would pin the whole RPC buffer alive.
-   */
-  pubkey: Uint8Array
 }
 
 /**
@@ -196,10 +159,6 @@ function isValidAuthorityKey(slot: WalletAuthoritySlot): boolean {
   return (k[0] === 0x02 || k[0] === 0x03) && k.subarray(1).some((b) => b !== 0)
 }
 
-function readSlot(data: Uint8Array, off: number): { sigScheme: number; pubkey: Uint8Array } {
-  return { sigScheme: data[off], pubkey: data.slice(off + 1, off + AUTHORITY_SLOT_SIZE) }
-}
-
 /**
  * Parse a raw account body into a typed {@link MachineWalletState}. Mirrors
  * `state.rs::MachineWallet::deserialize` (the validating path) and rejects
@@ -249,41 +208,32 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
 
   const authorities: WalletAuthoritySlot[] = []
   for (let i = 0; i < authorityCount; i++) {
-    const raw = readSlot(data, WALLET_HEADER_SIZE + i * AUTHORITY_SLOT_SIZE)
-    // An unknown scheme means this build can't tell which verifier the
-    // authority routes to; guessing silently locks the signer out.
-    if (!isKnownSigScheme(raw.sigScheme)) {
-      throw new Error(`Unknown sig_scheme byte in authority slot ${i}: ${raw.sigScheme}`)
-    }
-    const slot: WalletAuthoritySlot = { sigScheme: raw.sigScheme, pubkey: raw.pubkey }
+    const slot = readKnownSlot(data, WALLET_HEADER_SIZE + i * AUTHORITY_SLOT_SIZE, `authority slot ${i}`)
     if (!isValidAuthorityKey(slot)) {
       throw new Error(`Invalid authority pubkey in slot ${i}`)
     }
     authorities.push(slot)
   }
 
-  const rawRoot = readSlot(data, OFFSET.ROOT)
-  if (!isKnownSigScheme(rawRoot.sigScheme)) {
-    throw new Error(`Unknown root sig_scheme byte: ${rawRoot.sigScheme}`)
-  }
-  const root: WalletAuthoritySlot = { sigScheme: rawRoot.sigScheme, pubkey: rawRoot.pubkey }
+  const root = readKnownSlot(data, OFFSET.ROOT, 'root')
   if (!authorities.some((a) => slotEqual(a, root))) {
     throw new Error('MachineWallet root is not one of its authorities')
   }
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
   const recoveryEta = view.getBigUint64(OFFSET.RECOVERY_ETA, true)
-  const rawPending = readSlot(data, OFFSET.PENDING_ROOT)
+  const pendingOff = OFFSET.PENDING_ROOT
   let pendingRoot: WalletAuthoritySlot | null
-  if (rawPending.sigScheme === EMPTY_SLOT_SCHEME && rawPending.pubkey.every((b) => b === 0)) {
+  if (
+    data[pendingOff] === EMPTY_SLOT_SCHEME &&
+    isAllZero(data.subarray(pendingOff + 1, pendingOff + AUTHORITY_SLOT_SIZE))
+  ) {
     if (recoveryEta !== 0n) {
       throw new Error(`MachineWallet has no pending root but recovery_eta is ${recoveryEta}`)
     }
     pendingRoot = null
-  } else if (isKnownSigScheme(rawPending.sigScheme)) {
-    pendingRoot = { sigScheme: rawPending.sigScheme, pubkey: rawPending.pubkey }
   } else {
-    throw new Error(`Invalid pending root slot (sig_scheme ${rawPending.sigScheme})`)
+    pendingRoot = readKnownSlot(data, pendingOff, 'pending root')
   }
 
   const recoveryThreshold = data[OFFSET.RECOVERY_THRESHOLD]

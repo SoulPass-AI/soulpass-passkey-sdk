@@ -5,12 +5,7 @@
  * constant live in `wire-format/constants.ts`.
  */
 
-import { VAULT_SEED } from './wire-format/constants';
-
 export const MACHINE_WALLET_PROGRAM_ADDRESS = 'SouLi11jcPZGRS1yBfJDxcrDAWHNvJeSwph8pxZWzYw';
-
-/** PDA seed for the system-owned vault (`MachineWallet::VAULT_SEED_PREFIX`). */
-export const MACHINE_WALLET_VAULT_SEED = VAULT_SEED;
 
 /** Signature validity window in slots (mirrors on-chain `max_slot` policy). */
 export const MAX_SLOT_WINDOW = 150n;

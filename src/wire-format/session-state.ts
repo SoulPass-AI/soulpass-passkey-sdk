@@ -47,9 +47,10 @@ import {
   SESSION_HEADER_SIZE,
   SLEEVE_ENTRY_SIZE,
 } from './constants';
-import { bytesEqual } from './_bytes';
-import type { CashMintPolicy } from './session';
-import { isKnownSigScheme, type MachineWalletState, type WalletAuthoritySlot } from '../wallet-state';
+import { bytesEqual, isAllZero } from './_bytes';
+import { hasZeroCashCap, type CashMintPolicy } from './session';
+import { readKnownSlot, type WalletAuthoritySlot } from './authority-slot';
+import type { MachineWalletState } from '../wallet-state';
 
 /** A session's per-mint budget: the signed policy plus the program's running counters. */
 export interface CashMintState extends CashMintPolicy {
@@ -140,8 +141,6 @@ export function sessionAccountSize(programCount: number, cashCount: number): num
   );
 }
 
-const isZero = (b: Uint8Array): boolean => b.every((x) => x === 0);
-
 /**
  * Parse a raw account body into a typed {@link SessionState}, rejecting
  * everything `SessionState::deserialize` rejects:
@@ -201,8 +200,8 @@ export function parseSessionState(data: Uint8Array): SessionState {
   const authority = data.slice(OFFSET.AUTHORITY, OFFSET.AUTHORITY + 32);
   const createdSlot = u64(OFFSET.CREATED_SLOT);
   const expirySlot = u64(OFFSET.EXPIRY_SLOT);
-  if (isZero(wallet)) throw new Error('SessionState wallet is all zero');
-  if (isZero(authority)) throw new Error('SessionState authority is all zero');
+  if (isAllZero(wallet)) throw new Error('SessionState wallet is all zero');
+  if (isAllZero(authority)) throw new Error('SessionState authority is all zero');
   if (createdSlot > expirySlot) {
     throw new Error(`SessionState created_slot ${createdSlot} > expiry_slot ${expirySlot}`);
   }
@@ -217,15 +216,7 @@ export function parseSessionState(data: Uint8Array): SessionState {
     allowedPrograms.push(program);
   }
 
-  const creatorOff = base + BUDGET.CREATOR;
-  const creatorScheme = data[creatorOff];
-  if (!isKnownSigScheme(creatorScheme)) {
-    throw new Error(`Unknown creator sig_scheme byte: ${creatorScheme}`);
-  }
-  const creator: WalletAuthoritySlot = {
-    sigScheme: creatorScheme,
-    pubkey: data.slice(creatorOff + 1, creatorOff + AUTHORITY_SLOT_SIZE),
-  };
+  const creator = readKnownSlot(data, base + BUDGET.CREATOR, 'creator');
 
   const cash: CashMintState[] = [];
   for (let i = 0; i < cashCount; i++) {
@@ -241,9 +232,7 @@ export function parseSessionState(data: Uint8Array): SessionState {
       lifetimeSpent: u64(o + 80),
     };
     if (
-      e.periodCap === 0n ||
-      e.lifetimeCap === 0n ||
-      e.periodSlots === 0n ||
+      hasZeroCashCap(e) ||
       e.spentInPeriod > e.periodCap ||
       e.lifetimeSpent > e.lifetimeCap
     ) {

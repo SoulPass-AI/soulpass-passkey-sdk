@@ -227,11 +227,7 @@ const RECOMPUTE: Record<string, Recompute> = {
   rotate_root: (parts, d) => {
     const { base, rest } = prefix(parts, d)
     const [scheme, pubkey] = take(rest, 2)
-    return computeRotateRootMessage({
-      ...base,
-      newRootSigScheme: u8(scheme!),
-      newRootPubkey: pubkey!,
-    })
+    return computeRotateRootMessage({ ...base, sigScheme: u8(scheme!), pubkey: pubkey! })
   },
   propose_recovery: (parts, d) => {
     const { base, rest } = prefix(parts, d)
@@ -394,7 +390,7 @@ describe('authority message guards', () => {
       computeSetRecoveryThresholdMessage({ ...base, recoveryThreshold: -1 }),
     ).toThrow(RangeError)
     expect(() =>
-      computeRotateRootMessage({ ...base, newRootSigScheme: 2, newRootPubkey: new Uint8Array(32) }),
+      computeRotateRootMessage({ ...base, sigScheme: 2, pubkey: new Uint8Array(32) }),
     ).toThrow(RangeError)
   })
 })

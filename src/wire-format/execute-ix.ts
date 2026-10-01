@@ -8,7 +8,8 @@
  */
 
 import { MachineWalletDisc } from './disc';
-import { MAX_CLIENT_DATA_JSON_SIZE, MAX_EPHEMERAL_SIGNERS, MAX_INNER_INSTRUCTIONS } from './constants';
+import { MAX_CLIENT_DATA_JSON_SIZE, MAX_INNER_INSTRUCTIONS } from './constants';
+import { encodeEphemeralBumps } from './operation-hash';
 import type { InnerInstruction } from './inner-hash';
 import { accountFlags } from './inner-hash';
 import { u16LE, u32LE, u64LE, concatBytes } from './_bytes';
@@ -87,27 +88,15 @@ export function buildExecuteIxData(args: {
   ephemeralSignerBumps?: Uint8Array;
 }): Uint8Array {
   const { maxSlot, innerInstructions, remainingAccounts, ephemeralSignerBumps } = args;
-  const tail = encodeInnerInstructions(innerInstructions, remainingAccounts);
-
-  if (ephemeralSignerBumps === undefined) {
-    return concatBytes([Uint8Array.of(MachineWalletDisc.Execute), u64LE(maxSlot), tail]);
-  }
-  // The decoder rejects num_ephemeral 0 or > MAX_EPHEMERAL_SIGNERS
-  // (TooManyEphemeralSigners); an empty list is a caller bug, not a request
-  // for disc=1 — omit the field for that.
-  const n = ephemeralSignerBumps.length;
-  if (n < 1 || n > MAX_EPHEMERAL_SIGNERS) {
-    throw new RangeError(
-      `ephemeralSignerBumps must hold 1..=${MAX_EPHEMERAL_SIGNERS} bumps, got ${n}`,
-    );
-  }
-  return concatBytes([
-    Uint8Array.of(MachineWalletDisc.ExecuteWithEphemeralSigners),
-    u64LE(maxSlot),
-    Uint8Array.of(n),
-    ephemeralSignerBumps,
-    tail,
-  ]);
+  const head =
+    ephemeralSignerBumps === undefined
+      ? [Uint8Array.of(MachineWalletDisc.Execute), u64LE(maxSlot)]
+      : [
+          Uint8Array.of(MachineWalletDisc.ExecuteWithEphemeralSigners),
+          u64LE(maxSlot),
+          encodeEphemeralBumps(ephemeralSignerBumps),
+        ];
+  return concatBytes([...head, encodeInnerInstructions(innerInstructions, remainingAccounts)]);
 }
 
 /**

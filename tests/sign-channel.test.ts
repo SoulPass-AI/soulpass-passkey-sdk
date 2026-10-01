@@ -5,7 +5,7 @@ import {
   type SignChannelResult,
 } from '../src/sign-channel'
 import { deriveApiUrl } from '../src/matrix-http'
-import { asVaultPda } from '../src/types'
+import type { VaultPda } from '../src/types'
 import { CHANNEL_ID_RE, jsonResponse } from './helpers'
 
 afterEach(() => {
@@ -45,7 +45,7 @@ describe('SignChannelClient.putPayload', () => {
     const client = new SignChannelClient('https://api.soulpass.ai/api')
     const delivered = await client.putPayload('c'.repeat(22), {
       transaction: 'AQID',
-      walletAddress: asVaultPda('VauLt111'),
+      walletAddress: 'VauLt111' as VaultPda,
       network: 'mainnet-beta',
     })
     expect(delivered).toBe(true)
@@ -63,7 +63,7 @@ describe('SignChannelClient.putPayload', () => {
     await expect(
       client.putPayload('c'.repeat(22), {
         transaction: 'AQID',
-        walletAddress: asVaultPda('VauLt111'),
+        walletAddress: 'VauLt111' as VaultPda,
         network: 'mainnet-beta',
       }),
     ).resolves.toBe(false)

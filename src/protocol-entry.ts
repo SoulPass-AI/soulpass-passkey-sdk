@@ -11,7 +11,6 @@
 // ── Deployment + client signing-window policy ────────────────────────────
 export {
   MACHINE_WALLET_PROGRAM_ADDRESS,
-  MACHINE_WALLET_VAULT_SEED,
   MAX_SLOT_WINDOW,
   SOLANA_SLOT_MS,
   ADD_AUTHORITY_CEREMONY_SLOT_WINDOW,

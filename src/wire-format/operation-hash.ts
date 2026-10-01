@@ -13,14 +13,9 @@
  * byte sequence.
  */
 
-import { requireByte, requireLength } from './_bytes';
+import { concatBytes, requireLength } from './_bytes';
 import { MAX_EPHEMERAL_SIGNERS } from './constants';
-import {
-  authorityPayload,
-  MACHINE_WALLET_TAGS,
-  type AuthorityMessageBase,
-} from './authority-messages';
-import { hashSignedMessage } from './signed-message';
+import { hashGoverned, MACHINE_WALLET_TAGS, type AuthorityMessageBase } from './authority-messages';
 
 /** Instruction tag for the disc=1 Execute message hash. */
 export const EXECUTE_TAG = new TextEncoder().encode(MACHINE_WALLET_TAGS.execute);
@@ -39,7 +34,7 @@ export const EXECUTE_EPHEMERAL_TAG = new TextEncoder().encode(
  *
  * Payload: `wallet(32) || creation_slot_u64_le || nonce_u64_le ||
  * max_slot_u64_le || inner_hash(32)`, hashed under the envelope and deployment
- * domain — see {@link hashSignedMessage}.
+ * domain — see `hashSignedMessage`.
  *
  * `innerHash` MUST come from {@link import('./inner-hash').computeInnerHash} —
  * any other hash function will produce a value the chain rejects.
@@ -47,14 +42,7 @@ export const EXECUTE_EPHEMERAL_TAG = new TextEncoder().encode(
 export function computeExecuteMessage(
   args: AuthorityMessageBase & { innerHash: Uint8Array },
 ): Uint8Array {
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: EXECUTE_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireLength(args.innerHash, 32, 'innerHash'),
-    ],
-  });
+  return hashGoverned(EXECUTE_TAG, args, requireLength(args.innerHash, 32, 'innerHash'));
 }
 
 /**
@@ -64,24 +52,33 @@ export function computeExecuteMessage(
  * max_slot_u64_le || bumps_len(1) || bumps(bumps_len) || inner_hash(32)`.
  *
  * Throws `RangeError` unless `ephemeralSignerBumps` holds
- * 1..=`MAX_EPHEMERAL_SIGNERS` (4) bumps — the same bound `buildExecuteIxData`
- * enforces, so nothing the chain would reject gets signed first.
+ * 1..=`MAX_EPHEMERAL_SIGNERS` (4) bumps — encoded by the same
+ * `encodeEphemeralBumps` as `buildExecuteIxData`.
  */
 export function computeExecuteEphemeralMessage(
   args: AuthorityMessageBase & { ephemeralSignerBumps: Uint8Array; innerHash: Uint8Array },
 ): Uint8Array {
-  const n = args.ephemeralSignerBumps.length;
+  return hashGoverned(
+    EXECUTE_EPHEMERAL_TAG,
+    args,
+    encodeEphemeralBumps(args.ephemeralSignerBumps),
+    requireLength(args.innerHash, 32, 'innerHash'),
+  );
+}
+
+/**
+ * `num_ephemeral(1) || bumps` — shared by the disc=16 ix data and its signed
+ * message (`computeExecuteEphemeralMessage`), so nothing the chain would
+ * reject gets signed first. Internal to `wire-format/`.
+ *
+ * Throws `RangeError` outside 1..=`MAX_EPHEMERAL_SIGNERS` (4): the decoder
+ * rejects 0 or more than that (TooManyEphemeralSigners). An empty list is a caller bug,
+ * not a request for disc=1 — omit the field for that.
+ */
+export function encodeEphemeralBumps(bumps: Uint8Array): Uint8Array {
+  const n = bumps.length;
   if (n < 1 || n > MAX_EPHEMERAL_SIGNERS) {
     throw new RangeError(`ephemeralSignerBumps must hold 1..=${MAX_EPHEMERAL_SIGNERS} bumps, got ${n}`);
   }
-  return hashSignedMessage({
-    deployment: args.deployment,
-    tag: EXECUTE_EPHEMERAL_TAG,
-    payloadParts: [
-      ...authorityPayload(args),
-      requireByte(args.ephemeralSignerBumps.length, 'ephemeralSignerBumps length'),
-      args.ephemeralSignerBumps,
-      requireLength(args.innerHash, 32, 'innerHash'),
-    ],
-  });
+  return concatBytes([Uint8Array.of(n), bumps]);
 }
