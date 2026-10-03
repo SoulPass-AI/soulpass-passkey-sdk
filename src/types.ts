@@ -185,24 +185,12 @@ export interface SDKSignTransactionMessage {
   type: 'SIGN_TRANSACTION'
   id: string
   payload: {
-    /** base64-serialized Transaction (legacy or v0 without ALT) */
+    /** Base64-serialized v1 transaction with inline accounts. */
     transaction: string
     /** Vault PDA base58 — the popup derives state PDA / authorities from this. */
     walletAddress: VaultPda
     /** Forwarded from SDK config so the popup picks the right RPC */
     network: SoulPassNetwork
-    /**
-     * Address Lookup Table addresses (base58). When provided, the popup
-     * resolves them on-chain and compiles the inner instructions into a v0
-     * VersionedTransaction, saving ~150 bytes per ALT-covered account
-     * (a 32-byte pubkey collapses to a 1-byte index). Required for swap and
-     * other dense flows that exceed the 1232-byte legacy tx limit.
-     *
-     * Without ALT, the popup falls back to legacy / minimal v0 assembly
-     * which works for short ix lists (CreateWallet, send-token, simple NFT
-     * ops) — see soulpass-ai/lib/machine-wallet-tx.ts.
-     */
-    altAddresses?: string[]
     /**
      * Caller-supplied bumps for per-Execute ephemeral signer PDAs. When
      * provided AND non-empty, the popup compiles the inner instructions
@@ -285,17 +273,8 @@ export type SDKMessage =
 // reflects the split on the SDK side so the caller can split the
 // gesture-preserving open() from the data-ready send(). ---
 
-/**
- * Per-tx options passed alongside the serialized transaction.
- *
- * Kept as a separate parameter (not bundled into the tx bytes) so the popup
- * can use them to choose its assembly strategy — e.g. ALT addresses are
- * resolved on-chain and fed into v0 message compilation, not part of the tx
- * blob the dApp serialized.
- */
+/** Per-call wallet authorization options; transaction resources live in the v1 message. */
 export interface SignTransactionOptions {
-  /** See {@link SDKSignTransactionMessage.payload.altAddresses}. */
-  altAddresses?: string[]
   /**
    * Bumps for the ephemeral signer PDAs the dApp derived via
    * {@link deriveEphemeralSigners}. Their pubkeys must already appear in the

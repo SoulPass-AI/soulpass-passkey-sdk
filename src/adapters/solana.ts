@@ -3,6 +3,7 @@ import {
   WalletName,
   WalletReadyState,
   WalletSignTransactionError,
+  WalletSendTransactionError,
 } from '@solana/wallet-adapter-base'
 import type {
   Connection,
@@ -10,6 +11,7 @@ import type {
   TransactionSignature,
 } from '@solana/web3.js'
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js'
+import { SolanaTransaction, normalizeDappTransaction } from '../solana-transaction'
 import { SoulPassWallet } from '../wallet'
 import type {
   SoulPassWalletConfig,
@@ -64,7 +66,11 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
   url = 'https://soulpass.ai'
   icon = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzA4MDgwYSIvPjx0ZXh0IHg9IjE2IiB5PSIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2M0YTk2MiIgZm9udC1zaXplPSIxNCI+UzwvdGV4dD48L3N2Zz4=' as const
 
-  readonly supportedTransactionVersions = null
+  /**
+   * dApps may hand legacy, v0 or v1 transactions; each is rewrapped as the v1
+   * draft the wallet's Execute carries ({@link normalizeDappTransaction}).
+   */
+  readonly supportedTransactionVersions: ReadonlySet<'legacy' | 0 | 1> = new Set(['legacy', 0, 1] as const)
 
   private wallet: SoulPassWallet
   private _publicKey: PublicKey | null = null
@@ -215,13 +221,20 @@ export class SoulPassWalletAdapter extends BaseMessageSignerWalletAdapter {
     )
   }
 
-  async sendTransaction<T extends Transaction | VersionedTransaction>(
+  async sendTransaction<T extends Transaction | VersionedTransaction | SolanaTransaction>(
     transaction: T,
-    _connection: Connection,
+    connection: Connection,
     _options?: SendOptions,
   ): Promise<TransactionSignature> {
-    const serialized = transaction.serialize({ requireAllSignatures: false } as any) as Uint8Array
-    return this.wallet.signAndSendTransaction(serialized)
+    // V0 lookups resolve through `connection`; the dApp's compute budget is
+    // dropped (the wallet simulates and sets it) and its heap request kept.
+    let tx: SolanaTransaction
+    try {
+      tx = await normalizeDappTransaction(transaction, connection, this._publicKey ? { payerKey: this._publicKey } : {})
+    } catch (error) {
+      throw new WalletSendTransactionError(error instanceof Error ? error.message : String(error), error)
+    }
+    return this.wallet.signAndSendTransaction(tx.serialize())
   }
 
   /**

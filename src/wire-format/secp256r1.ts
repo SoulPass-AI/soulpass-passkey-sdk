@@ -4,7 +4,7 @@
  * surfaces as a precompile failure at submit time, which the chain reports
  * as a generic "Program failed to complete" with no actionable message.
  *
- * The popup ALSO uses this builder for its placeholder ix during v0 tx
+ * The popup ALSO uses this builder for its placeholder ix during v1 tx
  * compilation (before the WebAuthn ceremony runs). Same byte layout; just
  * zeros in the signature / pubkey / auth-data slots.
  */

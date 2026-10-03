@@ -544,7 +544,6 @@ export class SoulPassWallet {
     return {
       transaction: uint8ArrayToBase64(serializedTx),
       ...this.signContext,
-      ...(options?.altAddresses ? { altAddresses: options.altAddresses } : {}),
       // Omit when absent or empty: the popup then builds plain Execute (disc 1), and
       // buildExecuteIxData throws on an empty ephemeralSignerBumps array.
       ...(options?.ephemeralSignerBumps && options.ephemeralSignerBumps.length > 0
@@ -559,7 +558,7 @@ export class SoulPassWallet {
    * and SIGN_MESSAGE can share the popup-ready / queue / cleanup wiring.
    *
    * `O` carries per-`send()` options (currently only SIGN_TRANSACTION uses
-   * this for `altAddresses`); SIGN_MESSAGE callers parameterize as `void` and
+   * this for ephemeral signer bumps); SIGN_MESSAGE callers parameterize as `void` and
    * ignore the third arg. `M` pins the concrete message type so a
    * `secondLeg` sees the payload it was built for, without narrowing.
    *

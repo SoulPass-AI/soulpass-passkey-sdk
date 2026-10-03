@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     protocol: 'src/protocol-entry.ts',
+    'solana-transaction': 'src/solana-transaction.ts',
     react: 'src/react/index.tsx',
     payments: 'src/payments-entry.ts',
     'payments-react': 'src/payments/react.tsx',

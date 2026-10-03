@@ -1,7 +1,7 @@
 /**
  * Standard base64 (RFC 4648 §4). Chunked to avoid the argument-count
  * RangeError that `String.fromCharCode(...bytes)` hits on large inputs
- * (signMessage payloads are dApp-controlled; txs stay under 1232 B).
+ * (signMessage payloads are dApp-controlled; v1 txs stay under 4096 B).
  */
 export function uint8ArrayToBase64(bytes: Uint8Array): string {
   const CHUNK = 0x8000;
