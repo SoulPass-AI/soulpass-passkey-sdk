@@ -1,6 +1,6 @@
 {
   "name": "@soulpass/passkey-sdk",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Passkey wallet and stablecoin payments for web apps — arbitrary Web3 signing plus PaymentIntent checkout",
   "license": "MIT",
   "homepage": "https://soulpass.ai",

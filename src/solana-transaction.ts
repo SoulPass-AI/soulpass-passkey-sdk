@@ -180,28 +180,42 @@ function recentFeesP75(samples: unknown): bigint {
  * 3. any further failure → `0n`, logged, never blocking the send.
  *
  * Clamped to {@link MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS}. Turn it into the
- * v1 total with {@link priorityFeeLamportsFromPrice}.
+ * v1 total with {@link priorityFeeLamportsFromPrice}. A caller with its own
+ * failure policy uses {@link fetchComputeUnitPriceMicroLamports}.
  */
 export async function estimateComputeUnitPriceMicroLamports(
   rpc: SolanaRpcSource,
   writableKeys: readonly (string | PublicKey)[],
   opts: { priorityLevel?: string } = {},
 ): Promise<bigint> {
+  try {
+    return await fetchComputeUnitPriceMicroLamports(rpc, writableKeys, opts)
+  } catch (error) {
+    return warnZero(error)
+  }
+}
+
+/**
+ * Steps 1–2 of {@link estimateComputeUnitPriceMicroLamports}, but step 3
+ * rejects instead of answering `0n` — so `0n` here always means the samples
+ * were zero, never that the estimate was unavailable. For a payer that would
+ * rather overpay a bounded fallback than send at 0 (the sponsor's own txs).
+ */
+export async function fetchComputeUnitPriceMicroLamports(
+  rpc: SolanaRpcSource,
+  writableKeys: readonly (string | PublicKey)[],
+  opts: { priorityLevel?: string } = {},
+): Promise<bigint> {
   const keys = [...new Set(writableKeys.map(key => typeof key === 'string' ? key : key.toBase58()))].slice(0, MAX_PRICE_ACCOUNT_KEYS)
   const clamp = (price: bigint) => price > MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS ? MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS : price
-  let call: SolanaJsonRpcCall
-  try { call = toSolanaJsonRpcCall(rpc) } catch (error) { return warnZero(error) }
+  const call = toSolanaJsonRpcCall(rpc)
   try {
     const result = await call('getPriorityFeeEstimate', [{ accountKeys: keys, options: { priorityLevel: opts.priorityLevel ?? 'High' } }])
     const fee = Number((result as { priorityFeeEstimate?: unknown } | null)?.priorityFeeEstimate)
     if (!Number.isFinite(fee) || fee < 0) throw new Error('getPriorityFeeEstimate returned no estimate')
     return clamp(BigInt(Math.ceil(fee)))
   } catch {
-    try {
-      return clamp(recentFeesP75(await call('getRecentPrioritizationFees', [keys])))
-    } catch (error) {
-      return warnZero(error)
-    }
+    return clamp(recentFeesP75(await call('getRecentPrioritizationFees', [keys])))
   }
 }
 

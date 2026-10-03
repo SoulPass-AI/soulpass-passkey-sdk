@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.2 — 2026-10-03
+
+- `fetchComputeUnitPriceMicroLamports(rpc, writableAccountKeys, { priorityLevel? })`：与
+  `estimateComputeUnitPriceMicroLamports` 同一算法（Helius `High` → `getRecentPrioritizationFees` p75，
+  封顶 `MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS`），但估价不可用时 **reject** 而不是返回 `0n`，所以它的
+  `0n` 只表示样本为零。给有自己失败策略的付款方（matrix-contract sponsor 自发交易：失败按有界回退价出价）。
+  `estimateComputeUnitPriceMicroLamports` 行为不变（失败 → `0n` + `console.warn`）。
+- 含 `f6f5b23` 的 v1 交易辅助简化（无线格式变化）。
+
 ## 0.7.1 — 2026-10-03（D6：优先费价格来源）
 
 - `estimateComputeUnitPriceMicroLamports(rpc, writableAccountKeys, { priorityLevel? })`：按交易写锁账户

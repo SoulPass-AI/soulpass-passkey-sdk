@@ -7,7 +7,7 @@ import { ed25519 } from '@noble/curves/ed25519'
 import {
   compileV1Transaction, SolanaTransaction, SOLANA_SIMULATION_RESOURCES,
   resourcesFromSimulation, optimizeV1Transaction, MAX_PRIORITY_FEE_LAMPORTS,
-  priorityFeeLamportsFromPrice, stripComputeBudget, estimateComputeUnitPriceMicroLamports, writableAccountKeys,
+  priorityFeeLamportsFromPrice, stripComputeBudget, estimateComputeUnitPriceMicroLamports, fetchComputeUnitPriceMicroLamports, writableAccountKeys,
   resolvePriorityFeeLamports, MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS, type SolanaJsonRpcCall, normalizeDappTransaction,
   selectExternalWalletTransactionVersion, compileExternalWalletTransaction, SolanaTransactionCapacityError,
 } from '../src/solana-transaction'
@@ -280,6 +280,17 @@ describe('priority-fee price source (D6)', () => {
       expect(await estimateComputeUnitPriceMicroLamports(caller({}).call, keys)).toBe(0n)
       expect(await estimateComputeUnitPriceMicroLamports(caller({ getPriorityFeeEstimate: () => null, getRecentPrioritizationFees: () => ({}) }).call, keys)).toBe(0n)
       expect(warn).toHaveBeenCalledTimes(2)
+    } finally { warn.mockRestore() }
+  })
+
+  it('fetch: same estimate, but rejects (no warning) where estimate would answer 0 for unavailability', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(await fetchComputeUnitPriceMicroLamports(caller({ getPriorityFeeEstimate: () => ({ priorityFeeEstimate: 12345.2 }) }).call, keys)).toBe(12346n)
+      expect(await fetchComputeUnitPriceMicroLamports(caller({ getRecentPrioritizationFees: () => [{ slot: 1, prioritizationFee: 0 }] }).call, keys)).toBe(0n)
+      await expect(fetchComputeUnitPriceMicroLamports(caller({}).call, keys)).rejects.toThrow()
+      await expect(fetchComputeUnitPriceMicroLamports(caller({ getPriorityFeeEstimate: () => null, getRecentPrioritizationFees: () => ({}) }).call, keys)).rejects.toThrow('no samples')
+      expect(warn).not.toHaveBeenCalled()
     } finally { warn.mockRestore() }
   })
 
