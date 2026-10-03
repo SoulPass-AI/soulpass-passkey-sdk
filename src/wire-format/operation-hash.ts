@@ -15,7 +15,7 @@
 
 import { concatBytes, requireLength } from './_bytes';
 import { MAX_EPHEMERAL_SIGNERS } from './constants';
-import { hashGoverned, MACHINE_WALLET_TAGS, type AuthorityMessageBase } from './authority-messages';
+import { hashWalletOp, MACHINE_WALLET_TAGS, type FundsNonceBound } from './authority-messages';
 
 /** Instruction tag for the disc=1 Execute message hash. */
 export const EXECUTE_TAG = new TextEncoder().encode(MACHINE_WALLET_TAGS.execute);
@@ -32,7 +32,7 @@ export const EXECUTE_EPHEMERAL_TAG = new TextEncoder().encode(
 /**
  * Compute the disc=1 Execute challenge.
  *
- * Payload: `wallet(32) || creation_slot_u64_le || nonce_u64_le ||
+ * Payload: `wallet(32) || creation_slot_u64_le || funds_nonce_u64_le ||
  * max_slot_u64_le || inner_hash(32)`, hashed under the envelope and deployment
  * domain — see `hashSignedMessage`.
  *
@@ -40,15 +40,15 @@ export const EXECUTE_EPHEMERAL_TAG = new TextEncoder().encode(
  * any other hash function will produce a value the chain rejects.
  */
 export function computeExecuteMessage(
-  args: AuthorityMessageBase & { innerHash: Uint8Array },
+  args: FundsNonceBound & { innerHash: Uint8Array },
 ): Uint8Array {
-  return hashGoverned(EXECUTE_TAG, args, requireLength(args.innerHash, 32, 'innerHash'));
+  return hashWalletOp(EXECUTE_TAG, args, args.fundsNonce, requireLength(args.innerHash, 32, 'innerHash'));
 }
 
 /**
  * Compute the disc=16 ExecuteWithEphemeralSigners challenge.
  *
- * Payload: `wallet(32) || creation_slot_u64_le || nonce_u64_le ||
+ * Payload: `wallet(32) || creation_slot_u64_le || funds_nonce_u64_le ||
  * max_slot_u64_le || bumps_len(1) || bumps(bumps_len) || inner_hash(32)`.
  *
  * Throws `RangeError` unless `ephemeralSignerBumps` holds
@@ -56,11 +56,12 @@ export function computeExecuteMessage(
  * `encodeEphemeralBumps` as `buildExecuteIxData`.
  */
 export function computeExecuteEphemeralMessage(
-  args: AuthorityMessageBase & { ephemeralSignerBumps: Uint8Array; innerHash: Uint8Array },
+  args: FundsNonceBound & { ephemeralSignerBumps: Uint8Array; innerHash: Uint8Array },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     EXECUTE_EPHEMERAL_TAG,
     args,
+    args.fundsNonce,
     encodeEphemeralBumps(args.ephemeralSignerBumps),
     requireLength(args.innerHash, 32, 'innerHash'),
   );

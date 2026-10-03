@@ -16,6 +16,8 @@ describe('MachineWalletError', () => {
     expect(MachineWalletError.RootRequired).toBe(62)
     expect(MachineWalletError.SessionEpochStale).toBe(70)
     expect(MachineWalletError.SessionSolBudgetMissing).toBe(75)
+    expect(MachineWalletError.SessionGenerationMismatch).toBe(76)
+    expect(MachineWalletError.RecoveryAlreadyPending).toBe(77)
   })
 
   it('retired codes are listed and absent from the table', () => {
@@ -28,17 +30,17 @@ describe('MachineWalletError', () => {
     expect(new Set(codes).size).toBe(codes.length)
   })
 
-  it('every code 0..75 is either live, retired, or in the 37..39 gap — never both', () => {
+  it('every code 0..77 is either live, retired, or in the 37..39 gap — never both', () => {
     // error.rs jumps from 36 (InvalidAuthorityPubkey) to 40 (InvalidWebAuthnAuthData);
     // 37..39 were never assigned.
     const unassigned = [37, 38, 39]
-    for (let c = 0; c <= 75; c++) {
+    for (let c = 0; c <= 77; c++) {
       const live = codes.includes(c)
       const retired = RETIRED_ERROR_CODES.includes(c)
       const gap = unassigned.includes(c)
       expect([live, retired, gap].filter(Boolean)).toHaveLength(1)
     }
-    expect(Math.max(...codes)).toBe(75)
+    expect(Math.max(...codes)).toBe(77)
   })
 
   it('describes codes', () => {
@@ -47,7 +49,9 @@ describe('MachineWalletError', () => {
     expect(describeMachineWalletError(66)).toBe('retired(66)')
     expect(describeMachineWalletError(13)).toBe('retired(13)')
     expect(describeMachineWalletError(38)).toBe('unknown(38)')
-    expect(describeMachineWalletError(76)).toBe('unknown(76)')
+    expect(describeMachineWalletError(76)).toBe('SessionGenerationMismatch')
+    expect(describeMachineWalletError(77)).toBe('RecoveryAlreadyPending')
+    expect(describeMachineWalletError(78)).toBe('unknown(78)')
     expect(describeMachineWalletError(-1)).toBe('unknown(-1)')
   })
 })

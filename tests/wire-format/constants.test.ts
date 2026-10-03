@@ -42,8 +42,8 @@ describe('machine-wallet constants', () => {
 
   it('layout sizes', () => {
     expect(C.AUTHORITY_SLOT_SIZE).toBe(34)
-    expect(C.WALLET_HEADER_SIZE).toBe(170)
-    expect(C.SESSION_HEADER_SIZE).toBe(101)
+    expect(C.WALLET_HEADER_SIZE).toBe(186)
+    expect(C.SESSION_HEADER_SIZE).toBe(109)
     expect(C.CASH_MINT_STATE_SIZE).toBe(88)
     expect(C.SLEEVE_ENTRY_SIZE).toBe(40)
   })

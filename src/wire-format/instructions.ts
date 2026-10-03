@@ -63,7 +63,8 @@ function keyThresholdMaxSlot(
 
 /**
  * The shared prefix of every authority-governed instruction
- * (`processor/mod.rs::load_governed`). AdvanceNonce (3), SetThreshold (11),
+ * (`processor/mod.rs::load_governed`) except RevokeSession, whose wallet is
+ * read-only ({@link REVOKE_SESSION_ACCOUNTS}). AdvanceNonce (3), SetThreshold (11),
  * RotateRoot (17), ProposeRecovery (20), CancelRecovery (21),
  * ExecuteRecovery (22), BumpEpoch (23) and SetRecoveryThreshold (24) use
  * exactly these three; AddAuthority (9) and RemoveAuthority (10) append the
@@ -74,8 +75,12 @@ export const GOVERNED_ACCOUNTS = ['instructions_sysvar', 'wallet (w)', 'fee_paye
 export const ADD_AUTHORITY_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'system_program'] as const;
 /** RemoveAuthority (10), `remove_authority.rs`: the System Program at index 3 (the wallet account shrinks). */
 export const REMOVE_AUTHORITY_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'system_program'] as const;
-/** RevokeSession (6), `revoke_session.rs`. */
-export const REVOKE_SESSION_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'session (w)'] as const;
+/**
+ * RevokeSession (6), `revoke_session.rs`. The wallet is **read-only**: revoke
+ * consumes no wallet counter, so it takes no write lock on the wallet and
+ * revocations never race grants, spends or governance.
+ */
+export const REVOKE_SESSION_ACCOUNTS = ['instructions_sysvar', 'wallet', 'fee_payer (s)', 'session (w)'] as const;
 /**
  * OwnerCloseSession (12), `owner_close_session.rs`. The rent goes to
  * `destination`, which must be the session's recorded rent payer.
@@ -129,16 +134,21 @@ export function buildAdvanceNonceIxData(args: { maxSlot: bigint }): Uint8Array {
 }
 
 /**
- * SessionExecute (5): `[5] || inner_count(u32 LE) || inner ixs` — the same
- * inner encoding as Execute, with no max_slot (the session key signs the
- * transaction itself). Pass the same `remainingAccounts` as the ix keys tail.
+ * SessionExecute (5): `[5] || generation(u64 LE) || inner_count(u32 LE) ||
+ * inner ixs` — the same inner encoding as Execute, with no max_slot (the
+ * session key signs the transaction itself). `generation` is the session's
+ * `SessionState.generation`; a mismatch fails with 76
+ * `SessionGenerationMismatch` (the grant changed — never refresh it and re-sign
+ * the old intent). Pass the same `remainingAccounts` as the ix keys tail.
  */
 export function buildSessionExecuteIxData(args: {
+  generation: bigint;
   innerInstructions: ReadonlyArray<InnerInstruction>;
   remainingAccounts: ReadonlyArray<RemainingAccount>;
 }): Uint8Array {
   return concatBytes([
     disc(MachineWalletDisc.SessionExecute),
+    u64LE(args.generation),
     encodeInnerInstructions(args.innerInstructions, args.remainingAccounts),
   ]);
 }
@@ -148,14 +158,14 @@ export function buildRevokeSessionIxData(args: { maxSlot: bigint; sessionAuthori
   return maxSlotSession(MachineWalletDisc.RevokeSession, args.maxSlot, args.sessionAuthority);
 }
 
-/** SelfRevokeSession (7): `[7]`. */
-export function buildSelfRevokeSessionIxData(): Uint8Array {
-  return disc(MachineWalletDisc.SelfRevokeSession);
+/** SelfRevokeSession (7): `[7] || generation(u64 LE)` — 9 B. */
+export function buildSelfRevokeSessionIxData(generation: bigint): Uint8Array {
+  return concatBytes([disc(MachineWalletDisc.SelfRevokeSession), u64LE(generation)]);
 }
 
-/** CloseSession (8): `[8]`. */
-export function buildCloseSessionIxData(): Uint8Array {
-  return disc(MachineWalletDisc.CloseSession);
+/** CloseSession (8): `[8] || generation(u64 LE)` — 9 B. */
+export function buildCloseSessionIxData(generation: bigint): Uint8Array {
+  return concatBytes([disc(MachineWalletDisc.CloseSession), u64LE(generation)]);
 }
 
 /**

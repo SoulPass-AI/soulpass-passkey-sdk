@@ -9,8 +9,22 @@
  * vectors in `tests/wire-format/signed-message-kat.test.ts`.
  *
  * All operations except CreateWallet share the same preamble —
- * `wallet(32) || creation_slot_u64_le || nonce_u64_le || max_slot_u64_le` —
- * binding the signature to one wallet lifetime, one nonce, and one expiry.
+ * `wallet(32) || creation_slot_u64_le || counter_u64_le || max_slot_u64_le` —
+ * binding the signature to one wallet lifetime, one counter, and one expiry.
+ *
+ * The counter is typed per operation (the program's replay domains), so a
+ * caller can never feed the wrong one:
+ *
+ * | Field             | Counter                         | Operations |
+ * |-------------------|---------------------------------|------------|
+ * | `fundsNonce`      | funds `nonce` (N)               | Execute, ExecuteEphemeral, AdvanceNonce, OwnerCloseSession, CreateSession (+ `sessionNonce`) |
+ * | `sessionNonce`    | `session_nonce` (S)             | BumpEpoch; CreateSession's trailing operand |
+ * | `generation`      | target session's generation     | RevokeSession |
+ * | `governanceNonce` | `governance_nonce` (G)          | RotateRoot, Propose/Cancel/ExecuteRecovery, AddAuthority approval and PoP, RemoveSelf/Other, SetThreshold, SetRecoveryThreshold, CloseWallet |
+ *
+ * CreateSession consumes only N; the new session's generation is N + 1
+ * ({@link import('../wallet-state').nextSessionGeneration}). RevokeSession and
+ * ProposeRecovery consume nothing.
  */
 
 import type { PublicKey } from '@solana/web3.js';
@@ -79,41 +93,62 @@ export const EXECUTE_RECOVERY_TAG = encoder.encode(MACHINE_WALLET_TAGS.executeRe
 export const SET_RECOVERY_THRESHOLD_TAG = encoder.encode(MACHINE_WALLET_TAGS.setRecoveryThreshold);
 export const BUMP_EPOCH_TAG = encoder.encode(MACHINE_WALLET_TAGS.bumpEpoch);
 
-/** Operands shared by every authority-signed operation except CreateWallet. */
-export interface AuthorityMessageBase {
+/** What every authority-signed operation except CreateWallet binds besides its counter. */
+export interface WalletMessageScope {
   walletPDA: PublicKey;
   creationSlot: bigint;
-  nonce: bigint;
   maxSlot: bigint;
   deployment: MachineWalletDeployment;
 }
 
-/** The shared preamble bytes (see the module doc above). */
-function authorityPayload(base: AuthorityMessageBase): Uint8Array[] {
-  return [
-    base.walletPDA.toBytes(),
-    u64LE(base.creationSlot),
-    u64LE(base.nonce),
-    u64LE(base.maxSlot),
-  ];
+/** Binds the funds nonce N (`MachineWallet.nonce`, {@link import('../wallet-state').MachineWalletState.nonce}). */
+export interface FundsNonceBound extends WalletMessageScope {
+  fundsNonce: bigint;
+}
+
+/** Binds the session nonce S (`MachineWallet.session_nonce`). */
+export interface SessionNonceBound extends WalletMessageScope {
+  sessionNonce: bigint;
+}
+
+/** Binds the governance nonce G (`MachineWallet.governance_nonce`). */
+export interface GovernanceNonceBound extends WalletMessageScope {
+  governanceNonce: bigint;
+}
+
+/** Binds the target session's generation (`SessionState.generation`) in the counter position. */
+export interface SessionGenerationBound extends WalletMessageScope {
+  generation: bigint;
 }
 
 /**
- * Hash `tag` over the shared preamble followed by `operands`. Exported for
- * `operation-hash.ts`, whose Execute messages share this exact preamble.
+ * Hash `tag` over `wallet || creation_slot || counter || max_slot` followed by
+ * `operands`. Exported for `operation-hash.ts`, whose Execute messages share
+ * this exact preamble.
  */
-export function hashGoverned(tag: Uint8Array, base: AuthorityMessageBase, ...operands: Uint8Array[]): Uint8Array {
+export function hashWalletOp(
+  tag: Uint8Array,
+  scope: WalletMessageScope,
+  counter: bigint,
+  ...operands: Uint8Array[]
+): Uint8Array {
   return hashSignedMessage({
-    deployment: base.deployment,
+    deployment: scope.deployment,
     tag,
-    payloadParts: [...authorityPayload(base), ...operands],
+    payloadParts: [
+      scope.walletPDA.toBytes(),
+      u64LE(scope.creationSlot),
+      u64LE(counter),
+      u64LE(scope.maxSlot),
+      ...operands,
+    ],
   });
 }
 
 /**
  * CreateWallet: `wallet(32) || max_slot || sig_scheme(1) || authority(33)`.
  *
- * The only signed operation with no creation_slot/nonce — the wallet does not
+ * The only signed operation with no creation_slot/counter — the wallet does not
  * exist yet, so there is no lifetime or nonce to bind to. Signing `sig_scheme`
  * prevents a known WebAuthn P-256 pubkey from being front-run into a raw
  * Secp256r1 wallet at the same PDA.
@@ -142,34 +177,46 @@ export function computeCreateWalletMessage(args: {
 
 /** CloseWallet: preamble `|| destination(32)`. */
 export function computeCloseWalletMessage(
-  args: AuthorityMessageBase & { destination: Uint8Array },
+  args: GovernanceNonceBound & { destination: Uint8Array },
 ): Uint8Array {
-  return hashGoverned(CLOSE_WALLET_TAG, args, requireLength(args.destination, 32, 'destination'));
+  return hashWalletOp(CLOSE_WALLET_TAG, args, args.governanceNonce, requireLength(args.destination, 32, 'destination'));
 }
 
 /** AdvanceNonce: the bare preamble. */
-export function computeAdvanceNonceMessage(args: AuthorityMessageBase): Uint8Array {
-  return hashGoverned(ADVANCE_NONCE_TAG, args);
+export function computeAdvanceNonceMessage(args: FundsNonceBound): Uint8Array {
+  return hashWalletOp(ADVANCE_NONCE_TAG, args, args.fundsNonce);
 }
 
-/** CreateSession: preamble `|| session_data_hash(32)`. */
+/**
+ * CreateSession: preamble (funds nonce N) `|| session_nonce(8) ||
+ * session_data_hash(32)`. Binds N and S, consumes only N; the created
+ * session's generation is the post-increment N.
+ */
 export function computeCreateSessionMessage(
-  args: AuthorityMessageBase & { sessionDataHash: Uint8Array },
+  args: FundsNonceBound & { sessionNonce: bigint; sessionDataHash: Uint8Array },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     CREATE_SESSION_TAG,
     args,
+    args.fundsNonce,
+    u64LE(args.sessionNonce),
     requireLength(args.sessionDataHash, 32, 'sessionDataHash'),
   );
 }
 
-/** RevokeSession (owner path): preamble `|| session_authority(32)`. */
+/**
+ * RevokeSession (owner path): preamble with the target session's generation in
+ * the counter position `|| session_authority(32)`. Consumes no counter and
+ * leaves the wallet read-only, so revocations can be pre-signed and run in
+ * parallel; the proof dies with the session incarnation it names.
+ */
 export function computeRevokeSessionMessage(
-  args: AuthorityMessageBase & { sessionAuthority: Uint8Array },
+  args: SessionGenerationBound & { sessionAuthority: Uint8Array },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     REVOKE_SESSION_TAG,
     args,
+    args.generation,
     requireLength(args.sessionAuthority, 32, 'sessionAuthority'),
   );
 }
@@ -181,11 +228,12 @@ export function computeRevokeSessionMessage(
  * `rent_payer` (it was the payer's deposit), so there is nothing to choose.
  */
 export function computeOwnerCloseSessionMessage(
-  args: AuthorityMessageBase & { sessionAuthority: Uint8Array },
+  args: FundsNonceBound & { sessionAuthority: Uint8Array },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     OWNER_CLOSE_SESSION_TAG,
     args,
+    args.fundsNonce,
     requireLength(args.sessionAuthority, 32, 'sessionAuthority'),
   );
 }
@@ -195,15 +243,16 @@ export function computeOwnerCloseSessionMessage(
  * Preamble `|| new_sig_scheme(1) || new_pubkey(33) || new_threshold(1)`.
  */
 export function computeAddAuthorityMessage(
-  args: AuthorityMessageBase & {
+  args: GovernanceNonceBound & {
     newSigScheme: number;
     newPubkey: Uint8Array;
     newThreshold: number;
   },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     ADD_AUTHORITY_TAG,
     args,
+    args.governanceNonce,
     requireByte(args.newSigScheme, 'newSigScheme'),
     requireLength(args.newPubkey, 33, 'newPubkey'),
     requireByte(args.newThreshold, 'newThreshold'),
@@ -220,15 +269,16 @@ export function computeAddAuthorityMessage(
  * leaves the wallet owned by a key nobody can sign with — unrecoverable.
  *
  * `newThreshold` is deliberately absent: the incoming key attests only to its
- * own existence and consent to join at this nonce. What the threshold becomes
+ * own existence and consent to join at this governance nonce. What the threshold becomes
  * is the existing owners' decision, bound into the message they sign.
  */
 export function computeAddAuthorityPopMessage(
-  args: AuthorityMessageBase & { newSigScheme: number; newPubkey: Uint8Array },
+  args: GovernanceNonceBound & { newSigScheme: number; newPubkey: Uint8Array },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     ADD_AUTHORITY_POP_TAG,
     args,
+    args.governanceNonce,
     requireByte(args.newSigScheme, 'newSigScheme'),
     requireLength(args.newPubkey, 33, 'newPubkey'),
   );
@@ -251,11 +301,12 @@ function keyOperand(args: AuthorityKeyOperand): Uint8Array[] {
  * threshold.
  */
 export function computeRemoveSelfMessage(
-  args: AuthorityMessageBase & AuthorityKeyOperand & { newThreshold: number },
+  args: GovernanceNonceBound & AuthorityKeyOperand & { newThreshold: number },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     REMOVE_SELF_TAG,
     args,
+    args.governanceNonce,
     ...keyOperand(args),
     requireByte(args.newThreshold, 'newThreshold'),
   );
@@ -267,11 +318,12 @@ export function computeRemoveSelfMessage(
  * signature can never authorize removing someone else.
  */
 export function computeRemoveOtherMessage(
-  args: AuthorityMessageBase & AuthorityKeyOperand & { newThreshold: number },
+  args: GovernanceNonceBound & AuthorityKeyOperand & { newThreshold: number },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     REMOVE_OTHER_TAG,
     args,
+    args.governanceNonce,
     ...keyOperand(args),
     requireByte(args.newThreshold, 'newThreshold'),
   );
@@ -279,9 +331,9 @@ export function computeRemoveOtherMessage(
 
 /** SetThreshold: preamble `|| new_threshold(1)`. */
 export function computeSetThresholdMessage(
-  args: AuthorityMessageBase & { newThreshold: number },
+  args: GovernanceNonceBound & { newThreshold: number },
 ): Uint8Array {
-  return hashGoverned(SET_THRESHOLD_TAG, args, requireByte(args.newThreshold, 'newThreshold'));
+  return hashWalletOp(SET_THRESHOLD_TAG, args, args.governanceNonce, requireByte(args.newThreshold, 'newThreshold'));
 }
 
 /**
@@ -289,20 +341,22 @@ export function computeSetThresholdMessage(
  * which must already be an authority. Signed by the current root.
  */
 export function computeRotateRootMessage(
-  args: AuthorityMessageBase & AuthorityKeyOperand,
+  args: GovernanceNonceBound & AuthorityKeyOperand,
 ): Uint8Array {
-  return hashGoverned(ROTATE_ROOT_TAG, args, ...keyOperand(args));
+  return hashWalletOp(ROTATE_ROOT_TAG, args, args.governanceNonce, ...keyOperand(args));
 }
 
 /**
  * ProposeRecovery: preamble `|| sig_scheme(1) || pubkey(33)` naming an
  * existing authority as the next root. Approved by the recovery threshold;
- * starts the recovery delay.
+ * starts the recovery delay. Consumes no counter and fails with 77
+ * `RecoveryAlreadyPending` while a proposal is pending — show the pending
+ * recovery, never retry.
  */
 export function computeProposeRecoveryMessage(
-  args: AuthorityMessageBase & AuthorityKeyOperand,
+  args: GovernanceNonceBound & AuthorityKeyOperand,
 ): Uint8Array {
-  return hashGoverned(PROPOSE_RECOVERY_TAG, args, ...keyOperand(args));
+  return hashWalletOp(PROPOSE_RECOVERY_TAG, args, args.governanceNonce, ...keyOperand(args));
 }
 
 /**
@@ -311,22 +365,23 @@ export function computeProposeRecoveryMessage(
  * elapsed. The distinct tag keeps a proposal signature from executing.
  */
 export function computeExecuteRecoveryMessage(
-  args: AuthorityMessageBase & AuthorityKeyOperand,
+  args: GovernanceNonceBound & AuthorityKeyOperand,
 ): Uint8Array {
-  return hashGoverned(EXECUTE_RECOVERY_TAG, args, ...keyOperand(args));
+  return hashWalletOp(EXECUTE_RECOVERY_TAG, args, args.governanceNonce, ...keyOperand(args));
 }
 
 /** CancelRecovery (root-signed veto): the bare preamble. */
-export function computeCancelRecoveryMessage(args: AuthorityMessageBase): Uint8Array {
-  return hashGoverned(CANCEL_RECOVERY_TAG, args);
+export function computeCancelRecoveryMessage(args: GovernanceNonceBound): Uint8Array {
+  return hashWalletOp(CANCEL_RECOVERY_TAG, args, args.governanceNonce);
 }
 
 /**
- * BumpEpoch: the bare preamble. Any single authority may sign it — it only
+ * BumpEpoch: the bare preamble over the session nonce S (consumed). Any single
+ * authority may sign it — it only
  * invalidates every session created under the current authority epoch.
  */
-export function computeBumpEpochMessage(args: AuthorityMessageBase): Uint8Array {
-  return hashGoverned(BUMP_EPOCH_TAG, args);
+export function computeBumpEpochMessage(args: SessionNonceBound): Uint8Array {
+  return hashWalletOp(BUMP_EPOCH_TAG, args, args.sessionNonce);
 }
 
 /**
@@ -334,11 +389,12 @@ export function computeBumpEpochMessage(args: AuthorityMessageBase): Uint8Array 
  * `0` follows the spending threshold.
  */
 export function computeSetRecoveryThresholdMessage(
-  args: AuthorityMessageBase & { recoveryThreshold: number },
+  args: GovernanceNonceBound & { recoveryThreshold: number },
 ): Uint8Array {
-  return hashGoverned(
+  return hashWalletOp(
     SET_RECOVERY_THRESHOLD_TAG,
     args,
+    args.governanceNonce,
     requireByte(args.recoveryThreshold, 'recoveryThreshold'),
   );
 }

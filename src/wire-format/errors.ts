@@ -76,6 +76,16 @@ export const MachineWalletError = {
   InvalidRecoveryTarget: 73,
   SessionVaultAuthorityDenied: 74,
   SessionSolBudgetMissing: 75,
+  /**
+   * A session-key transaction names a different creation of this session PDA.
+   * The grant changed: never refresh the generation and re-sign the old intent.
+   */
+  SessionGenerationMismatch: 76,
+  /**
+   * ProposeRecovery while a proposal is pending. Show the pending recovery;
+   * never retry — only the root's CancelRecovery (or ExecuteRecovery) clears it.
+   */
+  RecoveryAlreadyPending: 77,
 } as const;
 
 export type MachineWalletErrorName = keyof typeof MachineWalletError;

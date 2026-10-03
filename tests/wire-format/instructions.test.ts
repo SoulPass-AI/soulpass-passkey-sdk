@@ -171,9 +171,9 @@ describe('builders pinned to the decoder lengths', () => {
     expect(d.slice(9)).toEqual(key32)
   })
 
-  it('SelfRevokeSession and CloseSession carry the disc alone', () => {
-    expect(buildSelfRevokeSessionIxData()).toEqual(Uint8Array.of(7))
-    expect(buildCloseSessionIxData()).toEqual(Uint8Array.of(8))
+  it('SelfRevokeSession and CloseSession bind the session generation', () => {
+    expect(buildSelfRevokeSessionIxData(19n)).toEqual(Uint8Array.of(7, 19, 0, 0, 0, 0, 0, 0, 0))
+    expect(buildCloseSessionIxData(19n)).toEqual(Uint8Array.of(8, 19, 0, 0, 0, 0, 0, 0, 0))
   })
 
   it('AddAuthority: [9] sig_scheme pubkey(33) new_threshold max_slot = 44 B, new_threshold always 0', () => {
@@ -240,14 +240,15 @@ describe('buildSessionExecuteIxData', () => {
     },
   ]
 
-  it('is [5] || u32 count || inner, the same inner encoding Execute uses', () => {
+  it('is [5] || generation || u32 count || inner, the same inner encoding Execute uses', () => {
     const remainingAccounts = encodeRemainingAccounts(inner)
-    const d = buildSessionExecuteIxData({ innerInstructions: inner, remainingAccounts })
+    const d = buildSessionExecuteIxData({ generation: 19n, innerInstructions: inner, remainingAccounts })
     const exec = buildExecuteIxData({ maxSlot: 9n, innerInstructions: inner, remainingAccounts })
     expect(d[0]).toBe(MachineWalletDisc.SessionExecute)
-    expect(new DataView(d.buffer, d.byteOffset).getUint32(1, true)).toBe(1)
-    // Execute is [1] || max_slot(8) || <same tail>; SessionExecute has no max_slot.
-    expect(d.slice(1)).toEqual(exec.slice(9))
+    expect(new DataView(d.buffer, d.byteOffset).getUint32(9, true)).toBe(1)
+    // Execute is [1] || max_slot(8) || <same tail>; SessionExecute puts the generation there.
+    expect(new DataView(d.buffer, d.byteOffset).getBigUint64(1, true)).toBe(19n)
+    expect(d.slice(9)).toEqual(exec.slice(9))
   })
 })
 
@@ -258,7 +259,8 @@ describe('account tables', () => {
     expect(ADD_AUTHORITY_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'system_program'])
     expect(REMOVE_AUTHORITY_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'system_program'])
     expect(EXECUTE_ACCOUNTS).toEqual(['instructions_sysvar', 'wallet (w)', 'fee_payer (s)', 'vault (w)', '…remaining'])
-    expect(REVOKE_SESSION_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'session (w)'])
+    // RevokeSession consumes no counter: the wallet is read-only.
+    expect(REVOKE_SESSION_ACCOUNTS).toEqual(['instructions_sysvar', 'wallet', 'fee_payer (s)', 'session (w)'])
     expect(OWNER_CLOSE_SESSION_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'session (w)', 'destination (w) = rent_payer'])
     expect(CLOSE_SESSION_ACCOUNTS).toEqual(['session (w)', 'authority (s)', 'destination (w) = rent_payer'])
     expect(SELF_REVOKE_SESSION_ACCOUNTS).toEqual(['session (w)', 'authority (s)'])

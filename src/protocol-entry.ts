@@ -70,6 +70,7 @@ export type {
 // ── On-chain MachineWallet account state ─────────────────────────────────
 export {
   predictNextExecuteNonce,
+  nextSessionGeneration,
   parseWalletState,
   getWalletState,
   WalletNotDeployedError,
@@ -81,6 +82,10 @@ export {
   findAuthority,
 } from './wallet-state'
 export type { MachineWalletState, SigSchemeValue, WalletAuthoritySlot } from './wallet-state'
+
+// ── Governance quorum preflight (before any biometric prompt) ────────────
+export { governanceQuorum, assertGovernanceQuorum } from './governance-quorum'
+export type { GovernanceQuorum, GovernanceQuorumOperation } from './governance-quorum'
 
 // ── On-chain SessionState account + liveness ─────────────────────────────
 export {
@@ -150,7 +155,11 @@ export {
   computeBumpEpochMessage,
 } from './wire-format/authority-messages'
 export type {
-  AuthorityMessageBase,
+  WalletMessageScope,
+  FundsNonceBound,
+  SessionNonceBound,
+  GovernanceNonceBound,
+  SessionGenerationBound,
   AuthorityKeyOperand,
   MachineWalletTag,
 } from './wire-format/authority-messages'

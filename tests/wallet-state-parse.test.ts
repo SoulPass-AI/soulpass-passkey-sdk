@@ -14,6 +14,7 @@ import { Keypair } from '@solana/web3.js'
 import { hexToBytes } from '@noble/hashes/utils'
 import {
   walletAccountSize,
+  nextSessionGeneration,
   parseWalletState,
   effectiveAuthorityKey,
   isRoot,
@@ -40,7 +41,9 @@ const OFF = {
   RECOVERY_ETA: 129,
   VAULT: 137,
   RECOVERY_THRESHOLD: 169,
-  AUTHORITIES: 170,
+  SESSION_NONCE: 170,
+  GOVERNANCE_NONCE: 178,
+  AUTHORITIES: 186,
 } as const
 const SLOT = 34
 
@@ -63,7 +66,7 @@ function writeSlot(buf: Uint8Array, off: number, slot: { sigScheme: number; pubk
 }
 
 /**
- * A program-shaped 'W' account: 170-byte header + one slot per authority,
+ * A program-shaped 'W' account: 186-byte header + one slot per authority,
  * with `vault` derived from a real wallet PDA and `vault_bump`.
  */
 function makeAccount(opts: {
@@ -71,6 +74,8 @@ function makeAccount(opts: {
   root?: WalletAuthoritySlot
   threshold?: number
   nonce?: bigint
+  sessionNonce?: bigint
+  governanceNonce?: bigint
   creationSlot?: bigint
   authorityEpoch?: bigint
   pending?: { slot: WalletAuthoritySlot; eta: bigint }
@@ -78,7 +83,7 @@ function makeAccount(opts: {
 } = {}): { data: Uint8Array; vault: Uint8Array; walletPda: Uint8Array } {
   const authorities = opts.authorities ?? [PASSKEY]
   const n = authorities.length
-  const buf = new Uint8Array(170 + n * SLOT)
+  const buf = new Uint8Array(186 + n * SLOT)
   const walletPda = Keypair.generate().publicKey
   const vaultBump = 255
   let vault: Uint8Array | undefined
@@ -99,6 +104,8 @@ function makeAccount(opts: {
   buf[OFF.AUTHORITY_COUNT] = n
   const view = new DataView(buf.buffer)
   view.setBigUint64(OFF.NONCE, opts.nonce ?? 0n, true)
+  view.setBigUint64(OFF.SESSION_NONCE, opts.sessionNonce ?? 0n, true)
+  view.setBigUint64(OFF.GOVERNANCE_NONCE, opts.governanceNonce ?? 0n, true)
   view.setBigUint64(OFF.CREATION_SLOT, opts.creationSlot ?? 0n, true)
   writeSlot(buf, OFF.ROOT, opts.root ?? authorities[0])
   view.setBigUint64(OFF.AUTHORITY_EPOCH, opts.authorityEpoch ?? 0n, true)
@@ -117,7 +124,10 @@ function makeAccount(opts: {
 describe('parseWalletState', () => {
   it('decodes a well-formed single-authority account, vault included', () => {
     const { data, vault } = makeAccount({
+      // Distinct N, S, G: a counter read from the wrong offset fails.
       nonce: 0x0123456789abcdefn,
+      sessionNonce: 0x1111_2222_3333_4444n,
+      governanceNonce: 0x5555_6666_7777_8888n,
       creationSlot: 0xabcd_ef01_2345_6789n,
       authorityEpoch: 9n,
     })
@@ -127,6 +137,9 @@ describe('parseWalletState', () => {
     expect(s.threshold).toBe(1)
     expect(s.authorityCount).toBe(1)
     expect(s.nonce).toBe(0x0123456789abcdefn)
+    expect(s.sessionNonce).toBe(0x1111_2222_3333_4444n)
+    expect(s.governanceNonce).toBe(0x5555_6666_7777_8888n)
+    expect(nextSessionGeneration(s)).toBe(0x0123456789abcdf0n)
     expect(s.creationSlot).toBe(0xabcd_ef01_2345_6789n)
     expect(s.authorityEpoch).toBe(9n)
     expect(s.pendingRoot).toBeNull()
@@ -137,10 +150,10 @@ describe('parseWalletState', () => {
     expect(s.root).toEqual(PASSKEY)
   })
 
-  it('walletAccountSize is 170 + 34n', () => {
-    expect(walletAccountSize(1)).toBe(204)
-    expect(walletAccountSize(2)).toBe(238)
-    expect(walletAccountSize(16)).toBe(714)
+  it('walletAccountSize is 186 + 34n', () => {
+    expect(walletAccountSize(1)).toBe(220)
+    expect(walletAccountSize(2)).toBe(254)
+    expect(walletAccountSize(16)).toBe(730)
   })
 
   it('rejects a body shorter than the header', () => {
@@ -286,8 +299,8 @@ describe('parseWalletState — layout KAT (program bytes)', () => {
   it(`decodes ${WALLET_KAT} field-for-field`, () => {
     const v = kat(WALLET_KAT)
     const data = hexToBytes(v.bytes_hex)
-    expect(data).toHaveLength(238)
-    expect(walletAccountSize(2)).toBe(238)
+    expect(data).toHaveLength(254)
+    expect(walletAccountSize(2)).toBe(254)
 
     const s = parseWalletState(data)
     expect(s.bump).toBe(0xfe)
@@ -295,6 +308,10 @@ describe('parseWalletState — layout KAT (program bytes)', () => {
     expect(s.threshold).toBe(katField(v, 'threshold')[0])
     expect(s.authorityCount).toBe(2)
     expect(s.nonce).toBe(u64Field(v, 'nonce_le'))
+    expect(s.sessionNonce).toBe(u64Field(v, 'session_nonce_le'))
+    expect(s.governanceNonce).toBe(u64Field(v, 'governance_nonce_le'))
+    // The program's vector uses distinct counters, so a swapped offset cannot pass.
+    expect(new Set([s.nonce, s.sessionNonce, s.governanceNonce]).size).toBe(3)
     expect(s.creationSlot).toBe(u64Field(v, 'creation_slot_le'))
     expect(s.vaultBump).toBe(0xfd)
     expect(s.authorityEpoch).toBe(3n)

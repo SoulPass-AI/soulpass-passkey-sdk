@@ -1,5 +1,5 @@
 /**
- * Off-chain reader for the MachineWallet account (`'W'` tag, 170-byte header).
+ * Off-chain reader for the MachineWallet account (`'W'` tag, 186-byte header).
  *
  * Lives here (not in `ephemeral-signers.ts`) because the byte layout is an
  * on-chain implementation detail of `machine-wallet`, while ephemeral-signer
@@ -46,7 +46,9 @@ export type { SigSchemeValue, WalletAuthoritySlot } from './wire-format/authorit
  * | 129    | recovery_eta       | u64           |
  * | 137    | vault              | [u8; 32]      |
  * | 169    | recovery_threshold | u8            |
- * | 170    | authorities        | [AuthoritySlot; N] |
+ * | 170    | session_nonce      | u64           |
+ * | 178    | governance_nonce   | u64           |
+ * | 186    | authorities        | [AuthoritySlot; N] |
  */
 const OFFSET = {
   TAG: 0,
@@ -63,6 +65,8 @@ const OFFSET = {
   RECOVERY_ETA: 129,
   VAULT: 137,
   RECOVERY_THRESHOLD: 169,
+  SESSION_NONCE: 170,
+  GOVERNANCE_NONCE: 178,
 } as const
 
 /** `AuthoritySlot::EMPTY.sig_scheme`: the pending-root slot when no recovery is pending. */
@@ -103,7 +107,20 @@ export interface MachineWalletState {
   walletId: Uint8Array
   threshold: number
   authorityCount: number
+  /**
+   * Funds nonce N: bound by Execute, OwnerCloseSession, AdvanceNonce and
+   * CreateSession; consumed by each. A created session's generation is the
+   * post-increment N ({@link nextSessionGeneration}).
+   */
   nonce: bigint
+  /** Session nonce S: bound by BumpEpoch (consumed) and CreateSession (not consumed). */
+  sessionNonce: bigint
+  /**
+   * Governance nonce G: bound by RotateRoot, Propose/Cancel/ExecuteRecovery,
+   * AddAuthority (approval and PoP), RemoveAuthority, SetThreshold,
+   * SetRecoveryThreshold and CloseWallet.
+   */
+  governanceNonce: bigint
   creationSlot: bigint
   vaultBump: number
   /**
@@ -247,6 +264,8 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
     threshold,
     authorityCount,
     nonce: view.getBigUint64(OFFSET.NONCE, true),
+    sessionNonce: view.getBigUint64(OFFSET.SESSION_NONCE, true),
+    governanceNonce: view.getBigUint64(OFFSET.GOVERNANCE_NONCE, true),
     creationSlot: view.getBigUint64(OFFSET.CREATION_SLOT, true),
     vaultBump: data[OFFSET.VAULT_BUMP],
     root,
@@ -260,12 +279,12 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
 }
 
 /** True iff `slot` (scheme AND pubkey) is the wallet's root. */
-export function isRoot(state: MachineWalletState, slot: WalletAuthoritySlot): boolean {
+export function isRoot(state: Pick<MachineWalletState, 'root'>, slot: WalletAuthoritySlot): boolean {
   return slotEqual(state.root, slot)
 }
 
 /** Index of `slot` (scheme AND pubkey) among the wallet's authorities, or -1. */
-export function findAuthority(state: MachineWalletState, slot: WalletAuthoritySlot): number {
+export function findAuthority(state: Pick<MachineWalletState, 'authorities'>, slot: WalletAuthoritySlot): number {
   return state.authorities.findIndex((a) => slotEqual(a, slot))
 }
 
@@ -334,4 +353,14 @@ export async function predictNextExecuteNonce(
     if (e instanceof WalletNotDeployedError) return 0n
     throw e
   }
+}
+
+/**
+ * The generation a CreateSession signed against `state` gives the new session:
+ * CreateSession consumes only the funds nonce, and the post-increment N is the
+ * generation (`N_before + 1`). Session-key transactions (SessionExecute,
+ * SelfRevokeSession, CloseSession) and the owner's RevokeSession bind it.
+ */
+export function nextSessionGeneration(state: Pick<MachineWalletState, 'nonce'>): bigint {
+  return state.nonce + 1n
 }

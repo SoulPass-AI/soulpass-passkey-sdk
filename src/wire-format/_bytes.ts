@@ -33,8 +33,8 @@ export function u32LE(value: number): Uint8Array {
 
 /** Little-endian u64 (matches `u64::to_le_bytes` on chain). */
 export function u64LE(value: bigint): Uint8Array {
-  if (value < 0n || value >= 1n << 64n) {
-    throw new RangeError(`u64LE: value out of u64 range: ${value}`);
+  if (typeof value !== 'bigint' || value < 0n || value >= 1n << 64n) {
+    throw new RangeError(`u64LE: value out of u64 range: ${String(value)}`);
   }
   const out = new Uint8Array(8);
   new DataView(out.buffer).setBigUint64(0, value, true);

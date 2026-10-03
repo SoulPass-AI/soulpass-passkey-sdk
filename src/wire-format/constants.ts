@@ -61,9 +61,9 @@ export const AUTHORITY_PUBKEY_SIZE = 33;
 /** `state::AUTHORITY_SLOT_SIZE`: `sig_scheme(1) || pubkey(33)`. */
 export const AUTHORITY_SLOT_SIZE = 1 + AUTHORITY_PUBKEY_SIZE;
 /** `MachineWallet::HEADER_SIZE`. */
-export const WALLET_HEADER_SIZE = 170;
+export const WALLET_HEADER_SIZE = 186;
 /** `SessionState::HEADER_SIZE`. */
-export const SESSION_HEADER_SIZE = 101;
+export const SESSION_HEADER_SIZE = 109;
 /** `CashMintState::SIZE`. */
 export const CASH_MINT_STATE_SIZE = 88;
 /** `SleeveEntry::SIZE`. */

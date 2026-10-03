@@ -41,7 +41,7 @@ import {
 } from '../../src/wire-format/operation-hash'
 import {
   MACHINE_WALLET_TAGS,
-  type AuthorityMessageBase,
+  type WalletMessageScope,
   computeCreateWalletMessage,
   computeCloseWalletMessage,
   computeAdvanceNonceMessage,
@@ -65,6 +65,7 @@ interface Vector {
   name: string
   domain: string
   tag: string
+  payload_field_names: string[]
   payload_parts_hex: string[]
   keccak256_hex: string
 }
@@ -102,20 +103,20 @@ const u8 = (b: Uint8Array): number => {
   return b[0]!
 }
 
-/** Split the shared `wallet || creation_slot || nonce || max_slot` preamble. */
+/** Split the shared `wallet || creation_slot || counter || max_slot` preamble. */
 const prefix = (
   parts: Uint8Array[],
   deployment: MachineWalletDeployment,
-): { base: AuthorityMessageBase; rest: Uint8Array[] } => {
-  const [wallet, creationSlot, nonce, maxSlot, ...rest] = parts
+): { scope: WalletMessageScope; counter: bigint; rest: Uint8Array[] } => {
+  const [wallet, creationSlot, counter, maxSlot, ...rest] = parts
   return {
-    base: {
+    scope: {
       walletPDA: new PublicKey(wallet!),
       creationSlot: u64(creationSlot!),
-      nonce: u64(nonce!),
       maxSlot: u64(maxSlot!),
       deployment,
     },
+    counter: u64(counter!),
     rest,
   }
 }
@@ -145,12 +146,14 @@ const RECOMPUTE: Record<string, Recompute> = {
     })
   },
   execute: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, fundsNonce: counter }
     const [innerHash] = take(rest, 1)
     return computeExecuteMessage({ ...base, innerHash: innerHash! })
   },
   execute_ephemeral: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, fundsNonce: counter }
     const [count, bumps, innerHash] = take(rest, 3)
     expect(u8(count!)).toBe(bumps!.length)
     return computeExecuteEphemeralMessage({
@@ -160,27 +163,32 @@ const RECOMPUTE: Record<string, Recompute> = {
     })
   },
   advance_nonce: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, fundsNonce: counter }
     take(rest, 0)
     return computeAdvanceNonceMessage(base)
   },
   create_session: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
-    const [sessionDataHash] = take(rest, 1)
-    return computeCreateSessionMessage({ ...base, sessionDataHash: sessionDataHash! })
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, fundsNonce: counter }
+    const [sessionNonce, sessionDataHash] = take(rest, 2)
+    return computeCreateSessionMessage({ ...base, sessionNonce: u64(sessionNonce!), sessionDataHash: sessionDataHash! })
   },
   revoke_session: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, generation: counter }
     const [sessionAuthority] = take(rest, 1)
     return computeRevokeSessionMessage({ ...base, sessionAuthority: sessionAuthority! })
   },
   owner_close_session: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, fundsNonce: counter }
     const [sessionAuthority] = take(rest, 1)
     return computeOwnerCloseSessionMessage({ ...base, sessionAuthority: sessionAuthority! })
   },
   add_authority: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [scheme, pubkey, threshold] = take(rest, 3)
     return computeAddAuthorityMessage({
       ...base,
@@ -190,12 +198,14 @@ const RECOMPUTE: Record<string, Recompute> = {
     })
   },
   add_authority_pop: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [scheme, pubkey] = take(rest, 2)
     return computeAddAuthorityPopMessage({ ...base, newSigScheme: u8(scheme!), newPubkey: pubkey! })
   },
   remove_self: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [scheme, pubkey, threshold] = take(rest, 3)
     return computeRemoveSelfMessage({
       ...base,
@@ -205,7 +215,8 @@ const RECOMPUTE: Record<string, Recompute> = {
     })
   },
   remove_authority_root: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [scheme, pubkey, threshold] = take(rest, 3)
     return computeRemoveOtherMessage({
       ...base,
@@ -215,42 +226,50 @@ const RECOMPUTE: Record<string, Recompute> = {
     })
   },
   set_threshold: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [threshold] = take(rest, 1)
     return computeSetThresholdMessage({ ...base, newThreshold: u8(threshold!) })
   },
   close_wallet: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [destination] = take(rest, 1)
     return computeCloseWalletMessage({ ...base, destination: destination! })
   },
   rotate_root: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [scheme, pubkey] = take(rest, 2)
     return computeRotateRootMessage({ ...base, sigScheme: u8(scheme!), pubkey: pubkey! })
   },
   propose_recovery: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [scheme, pubkey] = take(rest, 2)
     return computeProposeRecoveryMessage({ ...base, sigScheme: u8(scheme!), pubkey: pubkey! })
   },
   execute_recovery: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [scheme, pubkey] = take(rest, 2)
     return computeExecuteRecoveryMessage({ ...base, sigScheme: u8(scheme!), pubkey: pubkey! })
   },
   cancel_recovery: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     take(rest, 0)
     return computeCancelRecoveryMessage(base)
   },
   bump_epoch: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, sessionNonce: counter }
     take(rest, 0)
     return computeBumpEpochMessage(base)
   },
   set_recovery_threshold: (parts, d) => {
-    const { base, rest } = prefix(parts, d)
+    const { scope, counter, rest } = prefix(parts, d)
+    const base = { ...scope, governanceNonce: counter }
     const [threshold] = take(rest, 1)
     return computeSetRecoveryThresholdMessage({ ...base, recoveryThreshold: u8(threshold!) })
   },
@@ -301,7 +320,41 @@ describe('signed-message KATs', () => {
   })
 })
 
+/**
+ * The counter each operation binds, by the program's field name in the vector.
+ * Pins the typed-counter API to the contract's replay domains.
+ */
+const COUNTER_FIELD: Record<string, string> = {
+  execute: 'fundsNonce',
+  execute_ephemeral: 'fundsNonce',
+  advance_nonce: 'fundsNonce',
+  create_session: 'fundsNonce',
+  revoke_session: 'generation',
+  owner_close_session: 'fundsNonce',
+  add_authority: 'governanceNonce',
+  add_authority_pop: 'governanceNonce',
+  remove_self: 'governanceNonce',
+  remove_authority_root: 'governanceNonce',
+  set_threshold: 'governanceNonce',
+  close_wallet: 'governanceNonce',
+  rotate_root: 'governanceNonce',
+  propose_recovery: 'governanceNonce',
+  execute_recovery: 'governanceNonce',
+  cancel_recovery: 'governanceNonce',
+  bump_epoch: 'sessionNonce',
+  set_recovery_threshold: 'governanceNonce',
+}
+
 describe('every compute*Message entry point against the contract vectors', () => {
+  it('binds the counter the program binds', () => {
+    const field = { fundsNonce: 'nonce_le', sessionNonce: 'session_nonce_le', governanceNonce: 'governance_nonce_le', generation: 'generation_le' } as const
+    for (const v of fixture.vectors) {
+      const stem = v.name.replace(/_(local|devnet|mainnet)$/, '')
+      if (stem === 'create_wallet') continue
+      expect(v.payload_field_names[2], v.name).toBe(field[COUNTER_FIELD[stem] as keyof typeof field])
+    }
+  })
+
   const localVectors = fixture.vectors.filter((v) => v.name.endsWith('_local'))
 
   it('has one local vector per operation, each with an entry point', () => {
@@ -332,13 +385,14 @@ describe('tag constants', () => {
 
 describe('authority message guards', () => {
   const wallet = new PublicKey(new Uint8Array(32).fill(0xaa))
-  const base = {
+  const scope = {
     walletPDA: wallet,
     creationSlot: 100n,
-    nonce: 5n,
     maxSlot: 200n,
     deployment: 'devnet' as const,
   }
+  // Distinct N, S, G so a counter fed into the wrong slot changes the hash.
+  const base = { ...scope, fundsNonce: 5n, sessionNonce: 11n, governanceNonce: 19n }
   const pubkey = Uint8Array.from([0x02, ...new Uint8Array(32).fill(0x42)])
 
   /**
@@ -364,6 +418,20 @@ describe('authority message guards', () => {
     expect(hex(computeProposeRecoveryMessage(args))).not.toBe(
       hex(computeExecuteRecoveryMessage(args)),
     )
+  })
+
+  it('has no generic nonce: each operation names its own counter', () => {
+    // @ts-expect-error — Execute-family messages bind the funds nonce, not a generic one.
+    expect(() => computeAdvanceNonceMessage({ ...scope, nonce: 5n })).toThrow()
+    // @ts-expect-error — governance operations bind G.
+    expect(() => computeSetThresholdMessage({ ...scope, fundsNonce: 5n, newThreshold: 1 })).toThrow()
+  })
+
+  it('CreateSession binds N and S in their own positions', () => {
+    const hash = new Uint8Array(32).fill(7)
+    const a = computeCreateSessionMessage({ ...scope, fundsNonce: 5n, sessionNonce: 11n, sessionDataHash: hash })
+    const b = computeCreateSessionMessage({ ...scope, fundsNonce: 11n, sessionNonce: 5n, sessionDataHash: hash })
+    expect(hex(a)).not.toBe(hex(b))
   })
 
   it('rejects operands of the wrong width instead of hashing them', () => {

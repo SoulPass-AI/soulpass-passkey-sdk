@@ -27,7 +27,7 @@ describe('computeExecuteMessage', () => {
     const args = {
       walletPDA,
       creationSlot: 100n,
-      nonce: 5n,
+      fundsNonce: 5n,
       maxSlot: 200n,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
@@ -42,14 +42,14 @@ describe('computeExecuteMessage', () => {
     const base = {
       walletPDA,
       creationSlot: 100n,
-      nonce: 5n,
+      fundsNonce: 5n,
       maxSlot: 200n,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     }
     const a = computeExecuteMessage(base)
     expect(computeExecuteMessage({ ...base, creationSlot: 101n })).not.toEqual(a)
-    expect(computeExecuteMessage({ ...base, nonce: 6n })).not.toEqual(a)
+    expect(computeExecuteMessage({ ...base, fundsNonce: 6n })).not.toEqual(a)
     expect(computeExecuteMessage({ ...base, maxSlot: 201n })).not.toEqual(a)
     const otherInner = new Uint8Array(32).fill(0xbb)
     expect(computeExecuteMessage({ ...base, innerHash: otherInner })).not.toEqual(a)
@@ -64,7 +64,7 @@ describe('computeExecuteMessage', () => {
       computeExecuteMessage({
         walletPDA,
         creationSlot: 0n,
-        nonce: 0n,
+        fundsNonce: 0n,
         maxSlot: 0n,
         innerHash: new Uint8Array(31),
         deployment: DEPLOYMENT,
@@ -82,7 +82,7 @@ describe('computeExecuteEphemeralMessage', () => {
     const base = {
       walletPDA,
       creationSlot: 100n,
-      nonce: 5n,
+      fundsNonce: 5n,
       maxSlot: 200n,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
@@ -105,7 +105,7 @@ describe('computeExecuteEphemeralMessage', () => {
     const plain = computeExecuteMessage({
       walletPDA,
       creationSlot: 100n,
-      nonce: 5n,
+      fundsNonce: 5n,
       maxSlot: 200n,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
@@ -113,7 +113,7 @@ describe('computeExecuteEphemeralMessage', () => {
     const ephemeral = computeExecuteEphemeralMessage({
       walletPDA,
       creationSlot: 100n,
-      nonce: 5n,
+      fundsNonce: 5n,
       maxSlot: 200n,
       ephemeralSignerBumps: Uint8Array.of(255),
       innerHash: VALID_INNER_HASH,
@@ -126,7 +126,7 @@ describe('computeExecuteEphemeralMessage', () => {
     const base = {
       walletPDA,
       creationSlot: 0n,
-      nonce: 0n,
+      fundsNonce: 0n,
       maxSlot: 0n,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
@@ -140,7 +140,7 @@ describe('computeExecuteEphemeralMessage', () => {
     const base = {
       walletPDA,
       creationSlot: 0n,
-      nonce: 0n,
+      fundsNonce: 0n,
       maxSlot: 0n,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
@@ -155,7 +155,7 @@ describe('computeExecuteEphemeralMessage', () => {
       computeExecuteEphemeralMessage({
         walletPDA,
         creationSlot: 0n,
-        nonce: 0n,
+        fundsNonce: 0n,
         maxSlot: 0n,
         ephemeralSignerBumps: Uint8Array.of(255),
         innerHash: new Uint8Array(33),

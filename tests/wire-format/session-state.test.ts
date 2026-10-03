@@ -4,8 +4,9 @@
  * (`tests/fixtures/layout_kat.json`, a verbatim copy of the program's file).
  *
  * Offsets are written out from `state.rs` (`SessionState`) for P = 2, C = 2:
- * budget segment at 101 + 2×32 = 165 → mandate 165, creator 197, rent_payer
- * 231, cash_count 263, cash 264, sleeve_count 440, sleeve 441.
+ * generation at 101; budget segment at 109 + 2×32 = 173 → mandate 173,
+ * creator 205, rent_payer 239, cash_count 271, cash 272, sleeve_count 448,
+ * sleeve 449.
  */
 
 import { readFileSync } from 'node:fs'
@@ -51,25 +52,26 @@ const OFF = {
   REVOKED: 82,
   FLAGS: 99,
   PROGRAMS_COUNT: 100,
-  PROGRAM_1: 133,
-  CREATOR: 197,
-  CASH_COUNT: 263,
-  CASH_0: 264,
-  CASH_1: 352,
-  SLEEVE_COUNT: 440,
-  SLEEVE_1: 481,
+  PROGRAM_1: 141,
+  CREATOR: 205,
+  CASH_COUNT: 271,
+  CASH_0: 272,
+  CASH_1: 360,
+  SLEEVE_COUNT: 448,
+  SLEEVE_1: 489,
 } as const
 
 describe('parseSessionState — layout KAT (program bytes)', () => {
   it('decodes session_p2_sol_cash1_sleeve1_passkey_creator field-for-field', () => {
     const data = sessionBytes()
-    expect(data).toHaveLength(1081)
-    expect(sessionAccountSize(2, 2)).toBe(1081)
+    expect(data).toHaveLength(1089)
+    expect(sessionAccountSize(2, 2)).toBe(1089)
 
     const s: SessionState = parseSessionState(data)
     expect(s.bump).toBe(0xfc)
     expect(s.wallet).toEqual(field('wallet'))
     expect(s.authority).toEqual(field('authority'))
+    expect(s.generation).toBe(u64(field('generation_le')))
     expect(s.createdSlot).toBe(u64(field('created_slot_le')))
     expect(s.expirySlot).toBe(u64(field('expiry_slot_le')))
     expect(s.revoked).toBe(false)
@@ -101,9 +103,9 @@ describe('parseSessionState — layout KAT (program bytes)', () => {
     expect(s.sleeve[0]).toEqual({ mint: sleeve.slice(0, 32), amount: u64(sleeve, 32) })
   })
 
-  it('sessionAccountSize is 841 + 32P + 88C', () => {
-    expect(sessionAccountSize(1, 1)).toBe(961)
-    expect(sessionAccountSize(8, 5)).toBe(1537)
+  it('sessionAccountSize is 849 + 32P + 88C', () => {
+    expect(sessionAccountSize(1, 1)).toBe(969)
+    expect(sessionAccountSize(8, 5)).toBe(1545)
   })
 
   it('sessionSolPolicy returns the all-zero-mint entry', () => {
@@ -168,7 +170,7 @@ describe('sessionStateValidation', () => {
   })
 
   it('rejects a repeated allowed program', () => {
-    rejects((d) => void d.copyWithin(OFF.PROGRAM_1, 101, 133), /allowed program/i)
+    rejects((d) => void d.copyWithin(OFF.PROGRAM_1, 109, 141), /allowed program/i)
   })
 
   it('rejects an unknown creator sig_scheme', () => {
