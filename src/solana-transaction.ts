@@ -87,7 +87,7 @@ export function priorityFeeLamportsFromPrice(computeUnitPriceMicroLamports: stri
 
 /** Ceiling on an estimated price, µL/CU. An explicit caller price is clamped only by the total cap. */
 export const MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS = 1_000_000n
-/** Helius accepts at most 64 `accountKeys`; v1 transactions carry at most 64 accounts anyway. */
+/** A v1 transaction carries at most 64 accounts (Helius itself accepts up to 500 `accountKeys`). */
 const MAX_PRICE_ACCOUNT_KEYS = 64
 
 /**
