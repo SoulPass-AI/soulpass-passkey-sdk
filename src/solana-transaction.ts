@@ -81,6 +81,151 @@ export function priorityFeeLamportsFromPrice(computeUnitPriceMicroLamports: stri
   return total > MAX_PRIORITY_FEE_LAMPORTS ? MAX_PRIORITY_FEE_LAMPORTS : total
 }
 
+// ── Priority-fee price (D6) ─────────────────────────────────────────────────
+
+/** Ceiling on an estimated price, µL/CU. An explicit caller price is clamped only by the total cap. */
+export const MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS = 1_000_000n
+/** Helius accepts at most 64 `accountKeys`; v1 transactions carry at most 64 accounts anyway. */
+const MAX_PRICE_ACCOUNT_KEYS = 64
+
+/**
+ * One JSON-RPC call: resolves to the response's `result`, rejects on a
+ * transport failure or a JSON-RPC `error`. soulpass-ai passes its backend
+ * gateway (`(method, params) => backendRpc(slug, method, params)`).
+ */
+export type SolanaJsonRpcCall = (method: string, params: readonly unknown[]) => Promise<unknown>
+/** Where a Solana RPC call goes: a URL, a web3.js `Connection`, or a JSON-RPC caller. */
+export type SolanaRpcSource = string | Connection | SolanaJsonRpcCall
+
+let rpcRequestId = 0
+
+/** Normalise any {@link SolanaRpcSource} into a {@link SolanaJsonRpcCall}. */
+export function toSolanaJsonRpcCall(rpc: SolanaRpcSource): SolanaJsonRpcCall {
+  if (typeof rpc === 'function') return rpc
+  if (typeof rpc === 'string') {
+    return async (method, params) => {
+      const response = await fetch(rpc, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcRequestId, method, params }),
+      })
+      if (!response.ok) throw new Error(`RPC ${method} failed: HTTP ${response.status}`)
+      return jsonRpcResult(method, await response.json())
+    }
+  }
+  // web3.js 1.x keeps its transport (custom fetch, headers) behind `_rpcRequest`.
+  const request = (rpc as unknown as { _rpcRequest?: (method: string, params: unknown[]) => Promise<unknown> })._rpcRequest
+  if (typeof request !== 'function') throw new Error('Connection exposes no JSON-RPC transport')
+  return async (method, params) => jsonRpcResult(method, await request.call(rpc, method, [...params]))
+}
+
+function jsonRpcResult(method: string, envelope: unknown): unknown {
+  const body = envelope as { result?: unknown; error?: { code?: number; message?: string } } | null
+  if (body?.error) throw new Error(`RPC ${method} failed (${body.error.code ?? '?'}): ${body.error.message ?? 'unknown error'}`)
+  if (!body || !('result' in body)) throw new Error(`RPC ${method} returned no result`)
+  return body.result
+}
+
+/** Anything whose write-locked accounts can be read: a v1 transaction / message, a web3 transaction, or a draft. */
+export type WritableKeysSource =
+  | SolanaTransaction
+  | SolanaMessage
+  | VersionedTransaction
+  | Transaction
+  | Readonly<{ payerKey: PublicKey; instructions: readonly TransactionInstruction[] }>
+
+/**
+ * The accounts a transaction write-locks, fee payer first — what priority is
+ * priced on. A v0 message's looked-up writable accounts are included only when
+ * `addressLookupTableAccounts` is supplied.
+ */
+export function writableAccountKeys(
+  source: WritableKeysSource,
+  opts: { addressLookupTableAccounts?: readonly AddressLookupTableAccount[] } = {},
+): string[] {
+  const keys: string[] = []
+  const add = (key: PublicKey | undefined) => { if (key) { const k = key.toBase58(); if (!keys.includes(k)) keys.push(k) } }
+  const message = source instanceof SolanaTransaction ? source.message : source
+  if (message instanceof SolanaMessage) {
+    message.staticAccountKeys.forEach((key, i) => { if (message.isAccountWritable(i)) add(key) })
+  } else if (message instanceof VersionedTransaction) {
+    const msg = message.message
+    const accounts = msg.addressTableLookups.length > 0 && opts.addressLookupTableAccounts
+      ? msg.getAccountKeys({ addressLookupTableAccounts: [...opts.addressLookupTableAccounts] })
+      : msg.getAccountKeys()
+    for (let i = 0; i < accounts.length; i++) if (msg.isAccountWritable(i)) add(accounts.get(i))
+  } else {
+    add(message instanceof Transaction ? message.feePayer ?? message.signatures[0]?.publicKey : message.payerKey)
+    for (const ix of message.instructions) for (const meta of ix.keys) if (meta.isWritable) add(meta.pubkey)
+  }
+  return keys
+}
+
+/** p75 of the non-zero samples (nearest-rank), 0 when every sample is zero. */
+function recentFeesP75(samples: unknown): bigint {
+  if (!Array.isArray(samples)) throw new Error('getRecentPrioritizationFees returned no samples')
+  const fees = samples
+    .map(s => Number((s as { prioritizationFee?: unknown })?.prioritizationFee))
+    .filter(fee => Number.isFinite(fee) && fee > 0)
+    .sort((a, b) => a - b)
+  return fees.length === 0 ? 0n : BigInt(Math.ceil(fees[Math.ceil(fees.length * 0.75) - 1]))
+}
+
+/**
+ * The compute-unit price (µL/CU) for a transaction's write-locked accounts:
+ *
+ * 1. Helius `getPriorityFeeEstimate` in accountKeys mode, `priorityLevel: "High"`;
+ * 2. where that is unavailable (a public node: method not found), p75 of the
+ *    non-zero `getRecentPrioritizationFees` samples for the same keys;
+ * 3. any further failure → `0n`, logged, never blocking the send.
+ *
+ * Clamped to {@link MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS}. Turn it into the
+ * v1 total with {@link priorityFeeLamportsFromPrice}.
+ */
+export async function estimateComputeUnitPriceMicroLamports(
+  rpc: SolanaRpcSource,
+  writableKeys: readonly (string | PublicKey)[],
+  opts: { priorityLevel?: string } = {},
+): Promise<bigint> {
+  const keys = [...new Set(writableKeys.map(key => typeof key === 'string' ? key : key.toBase58()))].slice(0, MAX_PRICE_ACCOUNT_KEYS)
+  const clamp = (price: bigint) => price > MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS ? MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS : price
+  let call: SolanaJsonRpcCall
+  try { call = toSolanaJsonRpcCall(rpc) } catch (error) { return warnZero(error) }
+  try {
+    const result = await call('getPriorityFeeEstimate', [{ accountKeys: keys, options: { priorityLevel: opts.priorityLevel ?? 'High' } }])
+    const fee = Number((result as { priorityFeeEstimate?: unknown } | null)?.priorityFeeEstimate)
+    if (!Number.isFinite(fee) || fee < 0) throw new Error('getPriorityFeeEstimate returned no estimate')
+    return clamp(BigInt(Math.ceil(fee)))
+  } catch {
+    try {
+      return clamp(recentFeesP75(await call('getRecentPrioritizationFees', [keys])))
+    } catch (error) {
+      return warnZero(error)
+    }
+  }
+}
+
+function warnZero(error: unknown): bigint {
+  console.warn('[SoulPass SDK] priority fee estimate unavailable; sending at 0 µL/CU:', error instanceof Error ? error.message : error)
+  return 0n
+}
+
+/**
+ * The v1 total priority fee for a measured CU limit: the explicit caller price
+ * when given (market's route price, CLI `--cu-price`), otherwise the
+ * estimate for the transaction's writable accounts. Capped at
+ * {@link MAX_PRIORITY_FEE_LAMPORTS}.
+ */
+export async function resolvePriorityFeeLamports(args: {
+  rpc: SolanaRpcSource
+  writableAccountKeys: readonly (string | PublicKey)[]
+  computeUnitLimit: number
+  computeUnitPriceMicroLamports?: string | bigint
+}): Promise<bigint> {
+  const price = args.computeUnitPriceMicroLamports ?? await estimateComputeUnitPriceMicroLamports(args.rpc, args.writableAccountKeys)
+  return priorityFeeLamportsFromPrice(price, args.computeUnitLimit)
+}
+
 function isComputeBudget(ix: TransactionInstruction): boolean {
   return ix.programId.toBase58() === COMPUTE_BUDGET_PROGRAM
 }
@@ -271,14 +416,16 @@ export function resourcesFromSimulation(result: {
 
 /**
  * Call after authority proofs are filled, before any outer Ed25519 signature.
- * With `computeUnitPriceMicroLamports` the total priority fee is derived from
- * the measured CU limit ({@link priorityFeeLamportsFromPrice}); without it the
- * draft's total is kept.
+ * The total priority fee is derived from the measured CU limit
+ * ({@link priorityFeeLamportsFromPrice}) at `computeUnitPriceMicroLamports`
+ * when the caller sets one, otherwise at the estimate for the transaction's
+ * writable accounts ({@link estimateComputeUnitPriceMicroLamports}, asked of
+ * `priorityFeeRpc`, default `rpc`).
  */
 export async function optimizeV1Transaction(
-  rpc: string | Connection,
+  rpc: SolanaRpcSource,
   transaction: SolanaTransaction,
-  options: { computeUnitPriceMicroLamports?: string | bigint } = {},
+  options: { computeUnitPriceMicroLamports?: string | bigint; priorityFeeRpc?: SolanaRpcSource } = {},
 ): Promise<SolanaTransaction> {
   if (transaction.signatures.some(sig => sig.some(byte => byte !== 0))) throw new Error('Estimate resources before signing the outer transaction')
   const probe = compileV1Transaction({
@@ -287,25 +434,38 @@ export async function optimizeV1Transaction(
     instructions: transaction.message.instructions(),
     config: { ...SOLANA_SIMULATION_RESOURCES, priorityFeeLamports: transaction.message.config.priorityFeeLamports, heapSize: transaction.message.config.heapSize },
   })
-  const result = typeof rpc === 'string' ? await createSolanaRpc(rpc).simulateTransaction(
-    getBase64EncodedWireTransaction(getTransactionDecoder().decode(probe.serialize())),
-    { encoding: 'base64', sigVerify: false, commitment: 'confirmed' },
-  ).send() : await simulateV1Transaction(rpc, probe, { sigVerify: false, commitment: 'confirmed' })
-  const value = result.value as typeof result.value & { loadedAccountsDataSize?: number | bigint }
-  const config = resourcesFromSimulation({
-    err: result.value.err,
-    unitsConsumed: result.value.unitsConsumed === undefined ? undefined : Number(result.value.unitsConsumed),
-    loadedAccountsDataSize: value.loadedAccountsDataSize === undefined ? undefined : Number(value.loadedAccountsDataSize),
-  }, transaction.message.config.priorityFeeLamports)
-  const priorityFeeLamports = options.computeUnitPriceMicroLamports === undefined
-    ? config.priorityFeeLamports
-    : priorityFeeLamportsFromPrice(options.computeUnitPriceMicroLamports, config.computeUnitLimit)
+  // The price depends only on the writable accounts, so it is asked for alongside the simulation.
+  const [result, price] = await Promise.all([
+    simulateProbe(rpc, probe),
+    options.computeUnitPriceMicroLamports ?? estimateComputeUnitPriceMicroLamports(options.priorityFeeRpc ?? rpc, writableAccountKeys(transaction)),
+  ])
+  const config = resourcesFromSimulation(result)
   return compileV1Transaction({
     payerKey: transaction.message.staticAccountKeys[0],
     recentBlockhash: transaction.message.recentBlockhash,
     instructions: transaction.message.instructions(),
-    config: { ...config, priorityFeeLamports, heapSize: transaction.message.config.heapSize },
+    config: { ...config, priorityFeeLamports: priorityFeeLamportsFromPrice(price, config.computeUnitLimit), heapSize: transaction.message.config.heapSize },
   })
+}
+
+async function simulateProbe(rpc: SolanaRpcSource, probe: SolanaTransaction): Promise<{ err: unknown; unitsConsumed?: number; loadedAccountsDataSize?: number }> {
+  let value: { err: unknown; unitsConsumed?: number | bigint; loadedAccountsDataSize?: number | bigint }
+  if (typeof rpc === 'string') {
+    value = (await createSolanaRpc(rpc).simulateTransaction(
+      getBase64EncodedWireTransaction(getTransactionDecoder().decode(probe.serialize())),
+      { encoding: 'base64', sigVerify: false, commitment: 'confirmed' },
+    ).send()).value
+  } else if (typeof rpc === 'function') {
+    const result = await rpc('simulateTransaction', [Buffer.from(probe.serialize()).toString('base64'), { encoding: 'base64', sigVerify: false, commitment: 'confirmed' }])
+    value = (result as { value?: typeof value } | null)?.value ?? { err: 'RPC returned no simulation' }
+  } else {
+    value = (await simulateV1Transaction(rpc, probe, { sigVerify: false, commitment: 'confirmed' })).value
+  }
+  return {
+    err: value.err,
+    unitsConsumed: value.unitsConsumed === undefined ? undefined : Number(value.unitsConsumed),
+    loadedAccountsDataSize: value.loadedAccountsDataSize === undefined ? undefined : Number(value.loadedAccountsDataSize),
+  }
 }
 
 /** web3.js 1.x's versioned RPC overload only serializes the supplied transaction. */

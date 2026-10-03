@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.1 — 2026-10-03（D6：优先费价格来源）
+
+- `estimateComputeUnitPriceMicroLamports(rpc, writableAccountKeys, { priorityLevel? })`：按交易写锁账户
+  定价。先 Helius `getPriorityFeeEstimate`（accountKeys 模式、`High`，不传序列化交易）；方法不可用
+  （公共节点）退到 `getRecentPrioritizationFees` 非零样本 p75；再失败返回 `0n` 并 `console.warn`，
+  从不阻断发送。价格封顶 `MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS = 1_000_000n`（µL/CU），总费仍封顶
+  `MAX_PRIORITY_FEE_LAMPORTS`。
+- `SolanaRpcSource = string | Connection | SolanaJsonRpcCall`（`(method, params) => result`），
+  `toSolanaJsonRpcCall` 归一；调用方可传后端 JWT 网关（`/user/v1/openagent/rpc/solana`→Helius）。
+- `writableAccountKeys(source)`：v1 交易 / 消息、web3 `VersionedTransaction`（v0 ALT 需传表）/
+  `Transaction`、`{ payerKey, instructions }` 草稿的写锁账户，费付者在前。
+- `resolvePriorityFeeLamports({ rpc, writableAccountKeys, computeUnitLimit, computeUnitPriceMicroLamports? })`：
+  显式价格优先，否则估价；外部钱包 v0 / legacy / v1 编译在实测资源后用它定总费。
+- **行为变化**：`optimizeV1Transaction(rpc, tx, { computeUnitPriceMicroLamports?, priorityFeeRpc? })`
+  不传价格时不再保留草稿总费，而是按交易写锁账户估价（问 `priorityFeeRpc`，缺省 `rpc`，与模拟并行）；
+  显式价格（市场 Jupiter 腿、CLI `--cu-price`）照旧优先。`rpc` 也接受 JSON-RPC caller。
+
 ## 0.7.0 — 2026-10-03（machine-wallet 1853b6e：v1 交易、N/S/G 三计数器、session generation）
 
 与 machine-wallet `1853b6e`（含 `acd4a62`）逐字节对齐。均为破坏性变更，未发布的

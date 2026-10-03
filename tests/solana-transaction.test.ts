@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import golden from './fixtures/solana-v1.json'
 import { AddressLookupTableAccount, ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js'
 import { getTransactionDecoder, getCompiledTransactionMessageDecoder } from '@solana/kit'
@@ -7,7 +7,8 @@ import { ed25519 } from '@noble/curves/ed25519'
 import {
   compileV1Transaction, SolanaTransaction, SOLANA_SIMULATION_RESOURCES,
   resourcesFromSimulation, optimizeV1Transaction, MAX_PRIORITY_FEE_LAMPORTS,
-  priorityFeeLamportsFromPrice, stripComputeBudget, normalizeDappTransaction,
+  priorityFeeLamportsFromPrice, stripComputeBudget, estimateComputeUnitPriceMicroLamports, writableAccountKeys,
+  resolvePriorityFeeLamports, MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS, type SolanaJsonRpcCall, normalizeDappTransaction,
   selectExternalWalletTransactionVersion, compileExternalWalletTransaction, SolanaTransactionCapacityError,
 } from '../src/solana-transaction'
 
@@ -75,13 +76,15 @@ it('matches the shared official Kit / Swift wire and Ed25519 vector byte for byt
 it('reads resource measurements through the web3 RPC parser and never rewrites signed messages',async()=>{
   const connection=new Connection('https://rpc.test.invalid', {fetch: async (_url,init)=>{
     const req=JSON.parse(init!.body as string);
+    if(req.method==='getPriorityFeeEstimate')return new Response(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{priorityFeeEstimate:20000}}),{status:200,headers:{'content-type':'application/json'}});
     expect(req.method).toBe('simulateTransaction');
     expect(Buffer.from(req.params[0],'base64')[0]).toBe(0x81);
     return new Response(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{context:{slot:1},value:{err:null,logs:[],unitsConsumed:100000,loadedAccountsDataSize:33000}}}),{status:200,headers:{'content-type':'application/json'}});
   }});
   const tx=await optimizeV1Transaction(connection,transfer());
   expect(tx.message.config.computeUnitLimit).toBe(110000);expect(tx.message.config.loadedAccountsDataSizeLimit).toBe(65536);
-  expect(tx.message.config.priorityFeeLamports).toBe(731n);
+  // The draft's 731 is replaced by the estimate: ceil(20_000 µL × 110_000 CU / 1e6).
+  expect(tx.message.config.priorityFeeLamports).toBe(2200n);
   tx.sign([payer]);await expect(optimizeV1Transaction(connection,tx)).rejects.toThrow('before signing');
 });
 
@@ -111,6 +114,7 @@ describe('priority fee (D2/D3)', () => {
   it('optimizeV1Transaction derives the total from the price and the measured CU', async () => {
     const connection = new Connection('https://rpc.test.invalid', { fetch: async (_url, init) => {
       const req = JSON.parse(init!.body as string)
+      expect(req.method).toBe('simulateTransaction')
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: req.id, result: { context: { slot: 1 }, value: { err: null, logs: [], unitsConsumed: 100000, loadedAccountsDataSize: 33000 } } }), { status: 200, headers: { 'content-type': 'application/json' } })
     } })
     const tx = await optimizeV1Transaction(connection, transfer(), { computeUnitPriceMicroLamports: '50000' })
@@ -226,5 +230,85 @@ describe('external wallet negotiation (D1)', () => {
     expect(() => compileExternalWalletTransaction({ ...base, instructions: [big], supportedTransactionVersions: ['legacy'] })).toThrow(SolanaTransactionCapacityError)
     expect(compileExternalWalletTransaction({ ...base, instructions: [big], supportedTransactionVersions: [1, 'legacy'] }).version).toBe(1)
     expect(() => compileExternalWalletTransaction({ ...base, instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 1 })], supportedTransactionVersions: [0] })).toThrow('resources')
+  })
+})
+
+describe('priority-fee price source (D6)', () => {
+  const keys = [payer.publicKey.toBase58(), receiver.toBase58()]
+  const rpcError = (code: number, message: string) => Object.assign(new Error(`RPC failed (${code}): ${message}`), { code })
+  const caller = (handlers: Record<string, (params: readonly unknown[]) => unknown>) => {
+    const calls: { method: string; params: readonly unknown[] }[] = []
+    const call: SolanaJsonRpcCall = async (method, params) => {
+      calls.push({ method, params })
+      const handler = handlers[method]
+      if (!handler) throw rpcError(-32601, 'Method not found')
+      return handler(params)
+    }
+    return { call, calls }
+  }
+
+  it('reads the writable accounts, fee payer first, of v1 / v0 / legacy / draft sources', () => {
+    const ix = SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: receiver, lamports: 1n })
+    expect(writableAccountKeys(transfer())).toEqual(keys)
+    expect(writableAccountKeys(transfer().message)).toEqual(keys)
+    expect(writableAccountKeys({ payerKey: payer.publicKey, instructions: [ix] })).toEqual(keys)
+    const legacy = new Transaction({ feePayer: payer.publicKey, recentBlockhash }).add(ix)
+    expect(writableAccountKeys(legacy)).toEqual(keys)
+    const v0 = new VersionedTransaction(new TransactionMessage({ payerKey: payer.publicKey, recentBlockhash, instructions: [ix] }).compileToV0Message())
+    expect(writableAccountKeys(v0)).toEqual(keys)
+    expect(writableAccountKeys(v0)).not.toContain(SystemProgram.programId.toBase58())
+  })
+
+  it('asks Helius in accountKeys mode at High and rounds the estimate up', async () => {
+    const { call, calls } = caller({ getPriorityFeeEstimate: () => ({ priorityFeeEstimate: 12345.2 }) })
+    expect(await estimateComputeUnitPriceMicroLamports(call, keys)).toBe(12346n)
+    expect(calls).toEqual([{ method: 'getPriorityFeeEstimate', params: [{ accountKeys: keys, options: { priorityLevel: 'High' } }] }])
+  })
+
+  it('falls back to p75 of non-zero recent fees when the estimator is unavailable', async () => {
+    const fees = [0, 0, 100, 400, 200, 300, 0].map((prioritizationFee, slot) => ({ slot, prioritizationFee }))
+    const { call, calls } = caller({ getRecentPrioritizationFees: () => fees })
+    expect(await estimateComputeUnitPriceMicroLamports(call, keys)).toBe(300n)
+    expect(calls.map(c => c.method)).toEqual(['getPriorityFeeEstimate', 'getRecentPrioritizationFees'])
+    expect(calls[1].params).toEqual([keys])
+    expect(await estimateComputeUnitPriceMicroLamports(caller({ getRecentPrioritizationFees: () => [{ slot: 1, prioritizationFee: 0 }] }).call, keys)).toBe(0n)
+  })
+
+  it('returns 0 and warns when both methods fail', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(await estimateComputeUnitPriceMicroLamports(caller({}).call, keys)).toBe(0n)
+      expect(await estimateComputeUnitPriceMicroLamports(caller({ getPriorityFeeEstimate: () => null, getRecentPrioritizationFees: () => ({}) }).call, keys)).toBe(0n)
+      expect(warn).toHaveBeenCalledTimes(2)
+    } finally { warn.mockRestore() }
+  })
+
+  it('clamps the price to 1_000_000 µL/CU and the total to MAX_PRIORITY_FEE_LAMPORTS', async () => {
+    expect(MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS).toBe(1_000_000n)
+    expect(await estimateComputeUnitPriceMicroLamports(caller({ getPriorityFeeEstimate: () => ({ priorityFeeEstimate: 9e9 }) }).call, keys)).toBe(1_000_000n)
+    expect(await estimateComputeUnitPriceMicroLamports(caller({ getRecentPrioritizationFees: () => [{ slot: 1, prioritizationFee: 5e7 }] }).call, keys)).toBe(1_000_000n)
+    const total = await resolvePriorityFeeLamports({ rpc: caller({ getPriorityFeeEstimate: () => ({ priorityFeeEstimate: 9e9 }) }).call, writableAccountKeys: keys, computeUnitLimit: 1_400_000 })
+    expect(total).toBe(MAX_PRIORITY_FEE_LAMPORTS)
+  })
+
+  it('an explicit caller price wins over the estimate', async () => {
+    const { call, calls } = caller({ getPriorityFeeEstimate: () => ({ priorityFeeEstimate: 999 }) })
+    expect(await resolvePriorityFeeLamports({ rpc: call, writableAccountKeys: keys, computeUnitLimit: 200_000, computeUnitPriceMicroLamports: '50000' })).toBe(10_000n)
+    expect(await resolvePriorityFeeLamports({ rpc: call, writableAccountKeys: keys, computeUnitLimit: 200_000, computeUnitPriceMicroLamports: 0n })).toBe(0n)
+    expect(calls).toEqual([])
+  })
+
+  it('optimizeV1Transaction estimates from the tx writable keys via priorityFeeRpc, explicit price skips it', async () => {
+    const simulate = () => ({ context: { slot: 1 }, value: { err: null, logs: [], unitsConsumed: 100000, loadedAccountsDataSize: 33000 } })
+    const sim = caller({ simulateTransaction: simulate })
+    const gateway = caller({ getPriorityFeeEstimate: () => ({ priorityFeeEstimate: 30000 }) })
+    const tx = await optimizeV1Transaction(sim.call, transfer(), { priorityFeeRpc: gateway.call })
+    expect(tx.message.config.computeUnitLimit).toBe(110_000)
+    expect(tx.message.config.priorityFeeLamports).toBe(3_300n)
+    expect(sim.calls.map(c => c.method)).toEqual(['simulateTransaction'])
+    expect(gateway.calls).toEqual([{ method: 'getPriorityFeeEstimate', params: [{ accountKeys: keys, options: { priorityLevel: 'High' } }] }])
+    const explicit = await optimizeV1Transaction(sim.call, transfer(), { computeUnitPriceMicroLamports: '1', priorityFeeRpc: gateway.call })
+    expect(explicit.message.config.priorityFeeLamports).toBe(1n)
+    expect(gateway.calls).toHaveLength(1)
   })
 })
