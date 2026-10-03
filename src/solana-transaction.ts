@@ -369,9 +369,11 @@ export type ExternalWalletTransaction =
  * sign the returned, unsigned transaction.
  *
  * - `1`: a v1 transaction carrying `resources` in its config (4096 bytes).
- * - `0`: ComputeBudget instructions derived from `resources` prepended, the
- *   caller's address lookup tables applied when supplied (1232 bytes).
- * - `'legacy'`: the same prefix, inline accounts (1232 bytes).
+ * - `0`: ComputeBudget instructions derived from `resources` appended after the
+ *   caller's instructions (so fixed indices such as an Ed25519 precompile at 0
+ *   stay valid; the runtime reads budgets from any position), the caller's
+ *   address lookup tables applied when supplied (1232 bytes).
+ * - `'legacy'`: the same suffix, inline accounts (1232 bytes).
  *
  * The draft must not carry its own ComputeBudget instructions. A draft that
  * does not fit the chosen format throws {@link SolanaTransactionCapacityError};
@@ -393,7 +395,7 @@ export function compileExternalWalletTransaction(args: {
   const message = new TransactionMessage({
     payerKey: args.payerKey,
     recentBlockhash: args.recentBlockhash,
-    instructions: [...computeBudgetInstructions(args.resources), ...args.instructions],
+    instructions: [...args.instructions, ...computeBudgetInstructions(args.resources)],
   })
   let transaction: VersionedTransaction
   let size: number

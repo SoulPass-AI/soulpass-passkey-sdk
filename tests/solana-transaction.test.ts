@@ -199,7 +199,7 @@ describe('external wallet negotiation (D1)', () => {
     expect(out.transaction.message.config).toEqual(resources)
   })
 
-  it('v0/legacy prepend ComputeBudget instructions derived from the resources', () => {
+  it('v0/legacy append ComputeBudget instructions after the caller\'s, keeping its indices', () => {
     for (const version of [0, 'legacy'] as const) {
       const out = compileExternalWalletTransaction({ ...base, supportedTransactionVersions: [version] })
       expect(out.version).toBe(version)
@@ -209,6 +209,7 @@ describe('external wallet negotiation (D1)', () => {
       const budget = tx.message.compiledInstructions.filter(ix => keys[ix.programIdIndex].equals(ComputeBudgetProgram.programId)).map(ix => Buffer.from(ix.data).toString('hex'))
       // limit 200000; price ceil(10001e6 / 200000) = 50005; loaded 65536; heap 65536.
       expect(budget).toEqual(['02400d0300', '0355c3000000000000', '0400000100', '0100000100'])
+      expect(keys[tx.message.compiledInstructions[0].programIdIndex].equals(SystemProgram.programId)).toBe(true)
     }
   })
 
