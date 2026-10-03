@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.7.0 — 2026-10-03（machine-wallet 1853b6e：v1 交易、N/S/G 三计数器、session generation）
+
+与 machine-wallet `1853b6e`（含 `acd4a62`）逐字节对齐。均为破坏性变更，未发布的
+基线不保留旧形态。
+
+### 交易格式（新入口 `@soulpass/passkey-sdk/solana-transaction`）
+
+- 一方交易只有 v1：`SolanaTransaction` / `SolanaMessage` / `compileV1Transaction`
+  （Kit 8.2.0 编解码，0x81、账户内联 ≤ 64、config 带 CU / loaded-accounts / **总**优先费
+  （lamports）/ 可选 heap，签名在尾部，含签名 ≤ 4096 字节）。v1 内出现 ComputeBudget
+  指令即拒绝；超限抛 `SolanaTransactionCapacityError`，不拆不降级。
+- `MAX_PRIORITY_FEE_LAMPORTS = 1_400_000n`（与 Swift SDK、sponsor 同一上限），
+  `compileV1Transaction` 超限即抛。
+- `priorityFeeLamportsFromPrice(computeUnitPriceMicroLamports, computeUnitLimit)`：
+  市场 `computeUnitPriceMicroLamports`（µL/CU 十进制字符串）× 实测 CU → v1 总费，
+  `ceil(price × cu / 1e6)`，封顶于上限。`optimizeV1Transaction(rpc, tx, { computeUnitPriceMicroLamports })`
+  在模拟（+10% 余量）后用它定总费；不传则保留草稿总费。
+- 外部钱包协商：`selectExternalWalletTransactionVersion`（有 1 选 1，否则 0，否则
+  `'legacy'`；都没有即报错）与 `compileExternalWalletTransaction`（签名前定格式；0 / legacy
+  由 `computeBudgetInstructions(resources)` 派生 CU limit / CU price
+  `ceil(total × 1e6 / cu)` / loaded-accounts / heap 前缀，v0 可带调用方 ALT，1232 字节上限）。
+  tens-gg / soulpass-ai 只调用它，不留本地副本。
+- dApp 输入接受 legacy / v0 / v1：`normalizeDappTransaction(input, connection)` 经 RPC
+  解析 v0 ALT（缺失或已停用即报错），`stripComputeBudget` 丢弃 dApp 的 CU / 价格 /
+  loaded-accounts（保留 32–256 KiB、1 KiB 步进的 heap），产出待包进 Execute 的无签名 v1
+  草稿；已签名输入拒绝。`SoulPassWalletAdapter.supportedTransactionVersions` 为
+  `{'legacy', 0, 1}`，带 ComputeBudget 前缀的 Anchor 草稿不再抛错。
+- `SignTransactionOptions.altAddresses` 与 SIGN_TRANSACTION 的 `altAddresses` 删除。
+
+### 计数器（D4）
+
+- 钱包头 186 字节：`session_nonce`（S）@170、`governance_nonce`（G）@178；
+  `MachineWalletState.sessionNonce` / `.governanceNonce`。`nonce` 仍是资金计数器 N。
+- `compute*Message` 不再接受通用 `nonce`，按操作取各自的计数器：
+  `FundsNonceBound.fundsNonce`（Execute、ExecuteEphemeral、AdvanceNonce、
+  OwnerCloseSession、CreateSession）、`SessionNonceBound.sessionNonce`（BumpEpoch；
+  CreateSession 另带 `sessionNonce` 于 session-data hash 前）、
+  `SessionGenerationBound.generation`（RevokeSession）、
+  `GovernanceNonceBound.governanceNonce`（RotateRoot、Propose/Cancel/ExecuteRecovery、
+  AddAuthority 批准与 PoP、RemoveSelf/Other、SetThreshold、SetRecoveryThreshold、
+  CloseWallet）。`AuthorityMessageBase` 删除，改为 `WalletMessageScope` + 上述四型。
+- Session 头 109 字节：`generation` @101（`SessionState.generation`）。CreateSession 只消耗
+  N，新 session 的 generation = N + 1（`nextSessionGeneration(state)`）。
+  `buildSessionExecuteIxData({ generation, … })`、`buildSelfRevokeSessionIxData(generation)`、
+  `buildCloseSessionIxData(generation)`。
+- `REVOKE_SESSION_ACCOUNTS` 的 wallet 改为只读（RevokeSession 不消耗计数器，可预签、可并行）。
+- 错误码：`76 SessionGenerationMismatch`（授权已变；不得刷新 generation 后重签旧意图）、
+  `77 RecoveryAlreadyPending`（已有待定恢复；展示它，不重试）。
+- 治理法定人数预检：`governanceQuorum` / `assertGovernanceQuorum`（SetThreshold(k) 需
+  root + max(旧, k)；SetRecoveryThreshold(k) 需 root + max(spending, k)；AddAuthority 需
+  root + threshold；两种移除需幸存密钥满足移除后阈值，被移除的密钥不计）。
+
+### 删除
+
+- `resourcesFromComputeBudget`（市场改发 `computeUnitPriceMicroLamports`；dApp 输入只剥离，
+  不翻译）。
+
+### 其他
+
+- KAT：三份程序向量重新逐字节拷贝（`revoke_session` 三条哈希随 generation 改变；字段名
+  `governance_nonce_le` / `session_nonce_le` / `generation_le`）。`check-fixtures` 改为与
+  `machine-wallet/program/tests/vectors` 比对（不再与 Swift 副本比对）；`solana-v1.json`、
+  P-256 向量仍与 Swift 共享。
+- 依赖：`@solana/kit` 8.2.0、`@noble/curves` 1.9.7；peer `@solana/web3.js` ≥ 1.99.0。
+
 ## 0.6.0 — 2026-09-30（machine-wallet 单一布局）
 
 `./protocol` 与 machine-wallet `feat/session-alignment` 程序逐字节对齐。钱包账户、

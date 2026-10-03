@@ -64,14 +64,20 @@ main bundle):
 There is one layout per account kind, told apart by byte 0 — no version
 field, no older layout to fall back to:
 
-- **Wallet (`'W'`, 0x57)** — a 170-byte header (`bump`, `wallet_id`,
-  `threshold`, `authority_count`, `nonce`, `creation_slot`, `vault_bump`,
-  `root`, `authority_epoch`, `pending_root`, `recovery_eta`, `vault`,
-  `recovery_threshold`) followed by `authority_count` 34-byte authority slots.
+- **Wallet (`'W'`, 0x57)** — a 186-byte header (`bump`, `wallet_id`,
+  `threshold`, `authority_count`, `nonce` (funds N), `creation_slot`,
+  `vault_bump`, `root`, `authority_epoch`, `pending_root`, `recovery_eta`,
+  `vault`, `recovery_threshold`, `session_nonce` (S) @170, `governance_nonce`
+  (G) @178) followed by `authority_count` 34-byte authority slots. Each signed
+  message binds exactly one of N / S / G / the target session's generation;
+  `compute*Message` takes it under its own name (`fundsNonce`,
+  `sessionNonce`, `governanceNonce`, `generation`).
   `parseWalletState` accepts exactly `walletAccountSize(count)` bytes and
   rejects what the program's validating `deserialize` rejects (a pending root
   with eta 0 is accepted, as on chain). Offsets: `src/wallet-state.ts`.
-- **Session (`'S'`, 0x53)** — a 101-byte header, the allowed programs, the
+- **Session (`'S'`, 0x53)** — a 109-byte header (`generation` @101, the
+  post-increment funds nonce of the CreateSession that made it; session-key
+  instructions and the owner's RevokeSession bind it), the allowed programs, the
   mandate hash, the creator slot, the rent payer, the cash budgets and a
   16-slot sleeve (`sessionAccountSize(P, C)`). `isSessionLive` mirrors
   `SessionExecute`: not revoked, `slot <= expiry_slot` (live through the

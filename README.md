@@ -306,3 +306,21 @@ const host = detectInAppBrowser() // 'WeChat' | 'Facebook' | … | null
 Cross-language wire-format contracts, the dual-SDK model, and distribution
 notes live in [ARCHITECTURE.md](./ARCHITECTURE.md). Version history and
 migration notes in [CHANGELOG.md](./CHANGELOG.md).
+
+## Solana v1 transactions
+
+`@soulpass/passkey-sdk/solana-transaction` owns the Solana wire formats. It uses the Solana Kit 8.2.0 compiler and codec, with web3.js 1.99 instruction and RPC types.
+
+**First-party (machine wallet) transactions are v1 only.** v1 messages inline all accounts (≤ 64), carry the CU limit, loaded-accounts limit, TOTAL priority fee in lamports and optional heap in their config, and put outer signatures at the end. The 4096-byte limit includes those signature slots. ComputeBudget instructions and lookup tables are rejected; overflow is an explicit `SolanaTransactionCapacityError`, never a split or downgrade.
+
+Construct with `compileV1Transaction`, add authority evidence, call `optimizeV1Transaction(rpc, tx, { computeUnitPriceMicroLamports })`, then sign the final message. Optimization simulates the complete envelope and reserves 10% CU and loaded-data headroom (data rounded to 32 KiB). The total priority fee is `priorityFeeLamportsFromPrice(price, measuredCu)` = `ceil(price × cu / 1e6)`, where `price` is the route's `computeUnitPriceMicroLamports`; it is capped at `MAX_PRIORITY_FEE_LAMPORTS` (1,400,000 lamports, shared with the Swift SDK and the sponsor) and `compileV1Transaction` refuses anything above it. Missing measurements fail closed; an already outer-signed transaction cannot be optimized.
+
+**External wallets negotiate.** `compileExternalWalletTransaction({ supportedTransactionVersions, payerKey, recentBlockhash, instructions, resources, addressLookupTables? })` picks `1` when the wallet offers it, else `0`, else `'legacy'` (`selectExternalWalletTransactionVersion`), before any signature. For 0 / legacy it prepends `computeBudgetInstructions(resources)` (CU limit, CU price `ceil(total × 1e6 / cu)`, loaded-accounts limit, heap) and enforces 1232 bytes; v0 uses the caller's lookup tables. A wallet offering none of these, or a draft that does not fit, is an explicit error.
+
+**dApp input accepts legacy, v0 and v1.** `normalizeDappTransaction(input, connection)` (used by `SoulPassWalletAdapter.sendTransaction`) resolves v0 lookup tables over RPC (missing or deactivated → error), drops the dApp's ComputeBudget instructions and v1 CU / fee config (`stripComputeBudget`), keeps a heap request (32–256 KiB, 1 KiB steps), and returns the unsigned v1 draft the wallet wraps in Execute.
+
+The wallet ABI has separate funds (N), session (S) and governance (G) nonces; every `compute*Message` names the one it binds, and session-key instructions and RevokeSession bind the session's generation. Contract-derived layout and signing vectors are shared with Swift and the relay.
+
+For the same signatures and priority fee, v1 does not inherently charge less than v0+ALT. The savings come from removing ALT setup/extension transactions and rent deposits, and from combining operations that otherwise required multiple envelopes. ALT deposits are refundable rent-exempt balances, not burned transaction fees. Fewer bytes alone do not reduce Solana's base fee.
+
+Protocol references: [larger transactions](https://solana.com/upgrades/larger-transaction-sizes), [SIMD-0385](https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0385-transaction-v1.md).
