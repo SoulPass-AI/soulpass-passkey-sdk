@@ -42,6 +42,11 @@ function maxSlotSession(d: number, maxSlot: bigint, sessionAuthority: Uint8Array
   return concatBytes([disc(d), u64LE(maxSlot), requireLength(sessionAuthority, 32, 'sessionAuthority')]);
 }
 
+/** `[disc] || generation(u64 LE)` — 9 bytes. */
+function discGeneration(d: number, generation: bigint): Uint8Array {
+  return concatBytes([disc(d), u64LE(generation)]);
+}
+
 /** `[disc] || sig_scheme(1) || pubkey(33) || new_threshold(1) || max_slot` — 44 bytes. */
 function keyThresholdMaxSlot(
   d: number,
@@ -160,12 +165,12 @@ export function buildRevokeSessionIxData(args: { maxSlot: bigint; sessionAuthori
 
 /** SelfRevokeSession (7): `[7] || generation(u64 LE)` — 9 B. */
 export function buildSelfRevokeSessionIxData(generation: bigint): Uint8Array {
-  return concatBytes([disc(MachineWalletDisc.SelfRevokeSession), u64LE(generation)]);
+  return discGeneration(MachineWalletDisc.SelfRevokeSession, generation);
 }
 
 /** CloseSession (8): `[8] || generation(u64 LE)` — 9 B. */
 export function buildCloseSessionIxData(generation: bigint): Uint8Array {
-  return concatBytes([disc(MachineWalletDisc.CloseSession), u64LE(generation)]);
+  return discGeneration(MachineWalletDisc.CloseSession, generation);
 }
 
 /**

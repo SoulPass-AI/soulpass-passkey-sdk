@@ -84,13 +84,14 @@ export function assertGovernanceQuorum(
 ): void {
   const need = governanceQuorum(state, op)
   const indexes = new Set(signers.map((s) => findAuthority(state, s)).filter((i) => i >= 0))
-  if (op.kind === 'removeSelf' && !indexes.has(findAuthority(state, op.target))) {
+  const targetSigned = 'target' in op && indexes.has(findAuthority(state, op.target))
+  if (op.kind === 'removeSelf' && !targetSigned) {
     fail('InsufficientSignatures', 'a self-removal is signed by the leaving key')
   }
   if (need.rootRequired && !signers.some((s) => isRoot(state, s))) fail('RootRequired', 'the root must sign')
   if (indexes.size < need.signers) fail('InsufficientSignatures', `${need.signers} authorities must sign, got ${indexes.size}`)
-  if (need.survivingSigners !== undefined && 'target' in op) {
-    const surviving = indexes.size - (indexes.has(findAuthority(state, op.target)) ? 1 : 0)
+  if (need.survivingSigners !== undefined) {
+    const surviving = indexes.size - (targetSigned ? 1 : 0)
     if (surviving < need.survivingSigners) {
       fail('InsufficientSignatures', `${need.survivingSigners} surviving authorities must sign (the removed key never counts), got ${surviving}`)
     }

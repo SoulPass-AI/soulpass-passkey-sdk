@@ -3,7 +3,6 @@ import {
   address, blockhash, compileTransactionMessage, decompileTransactionMessage,
   getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder,
   getTransactionDecoder, getTransactionEncoder,
-  createSolanaRpc, getBase64EncodedWireTransaction,
   type CompiledTransactionMessageWithLifetime, type V1CompiledTransactionMessage,
   type V1TransactionConfig, type Transaction as KitTransaction,
 } from '@solana/kit'
@@ -13,6 +12,8 @@ import {
   type AddressLookupTableAccount, type Signer, type Connection, type SimulateTransactionConfig,
   type SimulatedTransactionResponse, type RpcResponseAndContext,
 } from '@solana/web3.js'
+import { uint8ArrayToBase64 } from './encoding'
+import { isAllZero } from './wire-format/_bytes'
 
 export class SolanaTransactionCapacityError extends Error {
   constructor(message: string) { super(message); this.name = 'SolanaTransactionCapacityError' }
@@ -29,7 +30,6 @@ export const SOLANA_MAX_LOADED_ACCOUNT_BYTES = 64 * 1024 * 1024
  * which rejects anything above it.
  */
 export const MAX_PRIORITY_FEE_LAMPORTS = 1_400_000n
-const COMPUTE_BUDGET_PROGRAM = 'ComputeBudget111111111111111111111111111111'
 const MIN_HEAP_BYTES = 32 * 1024
 const MAX_HEAP_BYTES = 256 * 1024
 
@@ -52,16 +52,18 @@ function integerInRange(value: number, min: number, max: number, name: string): 
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}`)
 }
 
+function validateHeapSize(heapSize: number): void {
+  integerInRange(heapSize, MIN_HEAP_BYTES, MAX_HEAP_BYTES, 'heap size')
+  if (heapSize % 1024 !== 0) throw new Error('Heap size must be a multiple of 1024')
+}
+
 export function validateSolanaResources(config: V1TransactionConfig): asserts config is SolanaTransactionResources {
   integerInRange(config.computeUnitLimit ?? 0, 1, SOLANA_MAX_COMPUTE_UNITS, 'compute unit limit')
   integerInRange(config.loadedAccountsDataSizeLimit ?? 0, 1, SOLANA_MAX_LOADED_ACCOUNT_BYTES, 'loaded account data limit')
   if (typeof config.priorityFeeLamports !== 'bigint' || config.priorityFeeLamports < 0n || config.priorityFeeLamports > 0xffff_ffff_ffff_ffffn) {
     throw new Error('Invalid total priority fee')
   }
-  if (config.heapSize !== undefined) {
-    integerInRange(config.heapSize, MIN_HEAP_BYTES, MAX_HEAP_BYTES, 'heap size')
-    if (config.heapSize % 1024 !== 0) throw new Error('Heap size must be a multiple of 1024')
-  }
+  if (config.heapSize !== undefined) validateHeapSize(config.heapSize)
 }
 
 /**
@@ -143,14 +145,12 @@ export function writableAccountKeys(
   source: WritableKeysSource,
   opts: { addressLookupTableAccounts?: readonly AddressLookupTableAccount[] } = {},
 ): string[] {
-  const keys: string[] = []
-  const add = (key: PublicKey | undefined) => { if (key) { const k = key.toBase58(); if (!keys.includes(k)) keys.push(k) } }
+  const keys = new Set<string>()
+  const add = (key: PublicKey | undefined) => { if (key) keys.add(key.toBase58()) }
   const message = source instanceof SolanaTransaction ? source.message : source
-  if (message instanceof SolanaMessage) {
-    message.staticAccountKeys.forEach((key, i) => { if (message.isAccountWritable(i)) add(key) })
-  } else if (message instanceof VersionedTransaction) {
-    const msg = message.message
-    const accounts = msg.addressTableLookups.length > 0 && opts.addressLookupTableAccounts
+  if (message instanceof SolanaMessage || message instanceof VersionedTransaction) {
+    const msg = message instanceof VersionedTransaction ? message.message : message
+    const accounts = 'addressTableLookups' in msg && msg.addressTableLookups.length > 0 && opts.addressLookupTableAccounts
       ? msg.getAccountKeys({ addressLookupTableAccounts: [...opts.addressLookupTableAccounts] })
       : msg.getAccountKeys()
     for (let i = 0; i < accounts.length; i++) if (msg.isAccountWritable(i)) add(accounts.get(i))
@@ -158,7 +158,7 @@ export function writableAccountKeys(
     add(message instanceof Transaction ? message.feePayer ?? message.signatures[0]?.publicKey : message.payerKey)
     for (const ix of message.instructions) for (const meta of ix.keys) if (meta.isWritable) add(meta.pubkey)
   }
-  return keys
+  return [...keys]
 }
 
 /** p75 of the non-zero samples (nearest-rank), 0 when every sample is zero. */
@@ -227,7 +227,7 @@ export async function resolvePriorityFeeLamports(args: {
 }
 
 function isComputeBudget(ix: TransactionInstruction): boolean {
-  return ix.programId.toBase58() === COMPUTE_BUDGET_PROGRAM
+  return ix.programId.equals(ComputeBudgetProgram.programId)
 }
 
 /**
@@ -245,14 +245,13 @@ export function stripComputeBudget(instructions: readonly TransactionInstruction
     if (!isComputeBudget(ix)) { kept.push(ix); continue }
     const data = ix.data
     const tag = data[0]
-    const width = tag === 3 ? 9 : tag === 0 ? 9 : 5
+    const width = tag === 0 || tag === 3 ? 9 : 5
     if (ix.keys.length !== 0 || data.length !== width || tag > 4) throw new Error('Invalid compute budget instruction')
     if (seen.has(tag)) throw new Error('Duplicate compute budget instruction')
     seen.add(tag)
     if (tag === 1) {
       heapSize = data.readUInt32LE(1)
-      integerInRange(heapSize, MIN_HEAP_BYTES, MAX_HEAP_BYTES, 'heap size')
-      if (heapSize % 1024 !== 0) throw new Error('Heap size must be a multiple of 1024')
+      validateHeapSize(heapSize)
     }
   }
   return heapSize === undefined ? { instructions: kept } : { instructions: kept, heapSize }
@@ -277,7 +276,7 @@ export class SolanaMessage {
     validateSolanaResources(config)
     const h = compiled.header
     if (compiled.staticAccounts.length > 64) throw new SolanaTransactionCapacityError('Solana transaction exceeds 64 accounts')
-    integerInRange(compiled.staticAccounts.length, 1, 64, 'account count')
+    if (compiled.staticAccounts.length < 1) throw new Error('Invalid account count')
     integerInRange(compiled.instructionHeaders.length, 1, 64, 'instruction count')
     integerInRange(h.numSignerAccounts, 1, compiled.staticAccounts.length, 'signer count')
     integerInRange(h.numReadonlySignerAccounts, 0, h.numSignerAccounts - 1, 'readonly signer count')
@@ -299,7 +298,7 @@ export class SolanaMessage {
       integerInRange(ix.programAccountIndex, 0, this.staticAccountKeys.length - 1, 'program index')
       for (const index of indexes) integerInRange(index, 0, this.staticAccountKeys.length - 1, 'account index')
       if (ix.numInstructionAccounts !== indexes.length || ix.numInstructionDataBytes !== data.length) throw new Error('Invalid v1 instruction lengths')
-      if (this.staticAccountKeys[ix.programAccountIndex].toBase58() === COMPUTE_BUDGET_PROGRAM) throw new Error('Use v1 resource config instead of ComputeBudget instructions')
+      if (this.staticAccountKeys[ix.programAccountIndex].equals(ComputeBudgetProgram.programId)) throw new Error('Use v1 resource config instead of ComputeBudget instructions')
       return Object.freeze({ programIdIndex: ix.programAccountIndex, accountKeyIndexes: indexes, data })
     }))
     this.recentBlockhash = compiled.lifetimeToken
@@ -348,14 +347,16 @@ export class SolanaTransaction {
     this.signatures[index] = signature.slice()
   }
   sign(signers: readonly Signer[]): void {
-    for (const signer of signers) this.addSignature(signer.publicKey, ed25519.sign(this.message.serialize(), signer.secretKey.subarray(0, 32)))
+    const message = this.message.serialize()
+    for (const signer of signers) this.addSignature(signer.publicKey, ed25519.sign(message, signer.secretKey.subarray(0, 32)))
   }
   serialize(): Uint8Array {
     this.validateSignatures()
     // The decoder supplies Kit's branded message/signature types and validates framing.
-    const framed = new Uint8Array(this.message.serialize().length + this.signatures.length * 64)
-    framed.set(this.message.serialize())
-    this.signatures.forEach((sig, i) => framed.set(sig, this.message.serialize().length + i * 64))
+    const message = this.message.serialize()
+    const framed = new Uint8Array(message.length + this.signatures.length * 64)
+    framed.set(message)
+    this.signatures.forEach((sig, i) => framed.set(sig, message.length + i * 64))
     return Uint8Array.from(getTransactionEncoder().encode(getTransactionDecoder().decode(framed)))
   }
   static deserialize(bytes: Uint8Array): SolanaTransaction {
@@ -364,7 +365,7 @@ export class SolanaTransaction {
     const compiled = getCompiledTransactionMessageDecoder().decode(decoded.messageBytes)
     if (compiled.version !== 1) throw new Error('Expected a v1 message')
     const message = new SolanaMessage(compiled)
-    const signatures = message.staticAccountKeys.slice(0, message.header.numRequiredSignatures).map(key => Uint8Array.from(decoded.signatures[address(key.toBase58())] ?? new Uint8Array(64)))
+    const signatures = compiled.staticAccounts.slice(0, message.header.numRequiredSignatures).map(key => Uint8Array.from(decoded.signatures[key] ?? new Uint8Array(64)))
     const tx = new SolanaTransaction(message, signatures)
     const canonical = tx.serialize()
     if (canonical.length !== bytes.length || canonical.some((byte, i) => byte !== bytes[i])) throw new Error('Noncanonical v1 transaction')
@@ -427,40 +428,23 @@ export async function optimizeV1Transaction(
   transaction: SolanaTransaction,
   options: { computeUnitPriceMicroLamports?: string | bigint; priorityFeeRpc?: SolanaRpcSource } = {},
 ): Promise<SolanaTransaction> {
-  if (transaction.signatures.some(sig => sig.some(byte => byte !== 0))) throw new Error('Estimate resources before signing the outer transaction')
-  const probe = compileV1Transaction({
-    payerKey: transaction.message.staticAccountKeys[0],
-    recentBlockhash: transaction.message.recentBlockhash,
-    instructions: transaction.message.instructions(),
-    config: { ...SOLANA_SIMULATION_RESOURCES, priorityFeeLamports: transaction.message.config.priorityFeeLamports, heapSize: transaction.message.config.heapSize },
-  })
+  if (hasSignature(transaction.signatures)) throw new Error('Estimate resources before signing the outer transaction')
+  const { message } = transaction
+  const draft = { payerKey: message.staticAccountKeys[0], recentBlockhash: message.recentBlockhash, instructions: message.instructions() }
+  const probe = compileV1Transaction({ ...draft, config: { ...SOLANA_SIMULATION_RESOURCES, priorityFeeLamports: message.config.priorityFeeLamports, heapSize: message.config.heapSize } })
   // The price depends only on the writable accounts, so it is asked for alongside the simulation.
   const [result, price] = await Promise.all([
     simulateProbe(rpc, probe),
     options.computeUnitPriceMicroLamports ?? estimateComputeUnitPriceMicroLamports(options.priorityFeeRpc ?? rpc, writableAccountKeys(transaction)),
   ])
   const config = resourcesFromSimulation(result)
-  return compileV1Transaction({
-    payerKey: transaction.message.staticAccountKeys[0],
-    recentBlockhash: transaction.message.recentBlockhash,
-    instructions: transaction.message.instructions(),
-    config: { ...config, priorityFeeLamports: priorityFeeLamportsFromPrice(price, config.computeUnitLimit), heapSize: transaction.message.config.heapSize },
-  })
+  return compileV1Transaction({ ...draft, config: { ...config, priorityFeeLamports: priorityFeeLamportsFromPrice(price, config.computeUnitLimit), heapSize: message.config.heapSize } })
 }
 
 async function simulateProbe(rpc: SolanaRpcSource, probe: SolanaTransaction): Promise<{ err: unknown; unitsConsumed?: number; loadedAccountsDataSize?: number }> {
-  let value: { err: unknown; unitsConsumed?: number | bigint; loadedAccountsDataSize?: number | bigint }
-  if (typeof rpc === 'string') {
-    value = (await createSolanaRpc(rpc).simulateTransaction(
-      getBase64EncodedWireTransaction(getTransactionDecoder().decode(probe.serialize())),
-      { encoding: 'base64', sigVerify: false, commitment: 'confirmed' },
-    ).send()).value
-  } else if (typeof rpc === 'function') {
-    const result = await rpc('simulateTransaction', [Buffer.from(probe.serialize()).toString('base64'), { encoding: 'base64', sigVerify: false, commitment: 'confirmed' }])
-    value = (result as { value?: typeof value } | null)?.value ?? { err: 'RPC returned no simulation' }
-  } else {
-    value = (await simulateV1Transaction(rpc, probe, { sigVerify: false, commitment: 'confirmed' })).value
-  }
+  type Simulation = { err: unknown; unitsConsumed?: number | bigint; loadedAccountsDataSize?: number | bigint }
+  const result = await toSolanaJsonRpcCall(rpc)('simulateTransaction', [uint8ArrayToBase64(probe.serialize()), { encoding: 'base64', sigVerify: false, commitment: 'confirmed' }])
+  const value: Simulation = (result as { value?: Simulation } | null)?.value ?? { err: 'RPC returned no simulation' }
   return {
     err: value.err,
     unitsConsumed: value.unitsConsumed === undefined ? undefined : Number(value.unitsConsumed),
@@ -557,20 +541,20 @@ export function compileExternalWalletTransaction(args: {
     recentBlockhash: args.recentBlockhash,
     instructions: [...args.instructions, ...computeBudgetInstructions(args.resources)],
   })
+  const tooLarge = () => new SolanaTransactionCapacityError(`Solana ${version} transaction exceeds ${SOLANA_LEGACY_TRANSACTION_MAX_BYTES} bytes`)
   let transaction: VersionedTransaction
   let size: number
   try {
     transaction = new VersionedTransaction(version === 0
       ? message.compileToV0Message(args.addressLookupTables ? [...args.addressLookupTables] : [])
       : message.compileToLegacyMessage())
-    const signatures = transaction.message.header.numRequiredSignatures
-    size = transaction.message.serialize().length + (signatures < 128 ? 1 : 2) + signatures * 64
+    size = transaction.serialize().length
   } catch (error) {
     // web3.js encodes into a 1232-byte buffer and overruns it on oversize drafts.
-    if (error instanceof RangeError) throw new SolanaTransactionCapacityError(`Solana ${version} transaction exceeds ${SOLANA_LEGACY_TRANSACTION_MAX_BYTES} bytes`)
+    if (error instanceof RangeError) throw tooLarge()
     throw error
   }
-  if (size > SOLANA_LEGACY_TRANSACTION_MAX_BYTES) throw new SolanaTransactionCapacityError(`Solana ${version} transaction exceeds ${SOLANA_LEGACY_TRANSACTION_MAX_BYTES} bytes`)
+  if (size > SOLANA_LEGACY_TRANSACTION_MAX_BYTES) throw tooLarge()
   return { version, transaction }
 }
 
@@ -580,7 +564,7 @@ export function compileExternalWalletTransaction(args: {
 export type DappTransactionInput = Transaction | VersionedTransaction | SolanaTransaction | Uint8Array
 
 function hasSignature(signatures: readonly (Uint8Array | null)[]): boolean {
-  return signatures.some(sig => sig !== null && sig.some(byte => byte !== 0))
+  return signatures.some(sig => sig !== null && !isAllZero(sig))
 }
 
 /**
@@ -601,18 +585,18 @@ export async function normalizeDappTransaction(
   let recentBlockhash: string | undefined
   let instructions: TransactionInstruction[]
   let heapSize: number | undefined
-  const tx = input instanceof Uint8Array
+  const decoded = input instanceof Uint8Array
     ? (input[0] === 0x81 ? SolanaTransaction.deserialize(input) : VersionedTransaction.deserialize(input))
     : input
-  if (tx instanceof SolanaTransaction || (tx instanceof VersionedTransaction && tx.version === 1)) {
-    const v1 = tx instanceof SolanaTransaction ? tx : SolanaTransaction.deserialize(tx.serialize())
-    if (hasSignature(v1.signatures)) throw new Error('Signed dApp transactions cannot be rewrapped')
-    payerKey = v1.message.staticAccountKeys[0]
-    recentBlockhash = v1.message.recentBlockhash
-    instructions = v1.message.instructions()
-    heapSize = v1.message.config.heapSize
+  const tx = decoded instanceof VersionedTransaction && decoded.version === 1 ? SolanaTransaction.deserialize(decoded.serialize()) : decoded
+  const signatures = tx instanceof Transaction ? tx.signatures.map(slot => slot.signature) : tx.signatures
+  if (hasSignature(signatures)) throw new Error('Signed dApp transactions cannot be rewrapped')
+  if (tx instanceof SolanaTransaction) {
+    payerKey = tx.message.staticAccountKeys[0]
+    recentBlockhash = tx.message.recentBlockhash
+    instructions = tx.message.instructions()
+    heapSize = tx.message.config.heapSize
   } else if (tx instanceof VersionedTransaction) {
-    if (hasSignature(tx.signatures)) throw new Error('Signed dApp transactions cannot be rewrapped')
     const addressLookupTableAccounts = await Promise.all(tx.message.addressTableLookups.map(async lookup => {
       const table = (await connection.getAddressLookupTable(lookup.accountKey)).value
       if (!table) throw new Error(`Address lookup table ${lookup.accountKey.toBase58()} not found`)
@@ -624,7 +608,6 @@ export async function normalizeDappTransaction(
     recentBlockhash = decompiled.recentBlockhash
     instructions = decompiled.instructions
   } else {
-    if (hasSignature(tx.signatures.map(slot => slot.signature))) throw new Error('Signed dApp transactions cannot be rewrapped')
     payerKey = tx.feePayer
     recentBlockhash = tx.recentBlockhash
     instructions = tx.instructions

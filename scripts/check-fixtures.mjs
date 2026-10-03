@@ -25,22 +25,22 @@ const programVectors = resolve(here, '../../machine-wallet/program/tests/vectors
 const swiftFixtures = resolve(here, '../../soulpass-swift-sdk/Tests/Fixtures')
 const swiftKitFixtures = resolve(here, '../../soulpass-swift-sdk/Tests/SoulPassKitTests/Fixtures')
 
-// [fixture, canonical directory, source name, checkout root]. Extend when a
+// [fixture, canonical directory, source name]. Extend when a
 // new shared-vector file lands. The machine-wallet KATs keep the program's own
 // file names and are verbatim copies.
 const SHARED = [
-  ['signed_message_kat.json', programVectors, 'machine-wallet', programVectors],
-  ['session_data_kat.json', programVectors, 'machine-wallet', programVectors],
-  ['layout_kat.json', programVectors, 'machine-wallet', programVectors],
-  ['p256-compression-vectors.json', swiftFixtures, 'soulpass-swift-sdk', swiftFixtures],
-  ['solana-v1.json', swiftKitFixtures, 'soulpass-swift-sdk', swiftKitFixtures],
+  ['signed_message_kat.json', programVectors, 'machine-wallet'],
+  ['session_data_kat.json', programVectors, 'machine-wallet'],
+  ['layout_kat.json', programVectors, 'machine-wallet'],
+  ['p256-compression-vectors.json', swiftFixtures, 'soulpass-swift-sdk'],
+  ['solana-v1.json', swiftKitFixtures, 'soulpass-swift-sdk'],
 ]
 
 const problems = []
 const skipped = new Set()
 let verified = 0
-for (const [f, dir, source, root] of SHARED) {
-  if (!existsSync(root)) {
+for (const [f, dir, source] of SHARED) {
+  if (!existsSync(dir)) {
     skipped.add(source)
     continue
   }
