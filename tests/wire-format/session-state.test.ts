@@ -1,12 +1,12 @@
 /**
- * SessionState ('S') decoding and the liveness predicate, pinned by the
- * program's `session_p2_sol_cash1_sleeve1_passkey_creator` layout vector
+ * SessionState ('T') decoding and the liveness predicate, pinned by the
+ * program's `session_t_p2_sol_cash1_credit1_sleeve1_passkey_creator` layout vector
  * (`tests/fixtures/layout_kat.json`, a verbatim copy of the program's file).
  *
  * Offsets are written out from `state.rs` (`SessionState`) for P = 2, C = 2:
  * generation at 101; budget segment at 109 + 2×32 = 173 → mandate 173,
- * creator 205, rent_payer 239, cash_count 271, cash 272, sleeve_count 448,
- * sleeve 449.
+ * creator 205, rent_payer 239, cash_count 271, cash 272 (96 B each),
+ * sleeve_count 464, sleeve 465.
  */
 
 import { readFileSync } from 'node:fs'
@@ -37,13 +37,14 @@ const kat = (name: string): LayoutVector => {
   if (!v) throw new Error(`layout_kat.json is missing ${name}`)
   return v
 }
-const SESSION = kat('session_p2_sol_cash1_sleeve1_passkey_creator')
+const SESSION = kat('session_t_p2_sol_cash1_credit1_sleeve1_passkey_creator')
 const field = (name: string): Uint8Array => {
   const f = SESSION.fields.find((x) => x.name === name || x.name.startsWith(`${name} `))
   if (!f) throw new Error(`session vector has no field ${name}`)
   return hexToBytes(f.hex)
 }
 const u64 = (b: Uint8Array, off = 0): bigint => new DataView(b.buffer, b.byteOffset).getBigUint64(off, true)
+const view = (d: Uint8Array): DataView => new DataView(d.buffer, d.byteOffset)
 const sessionBytes = (): Uint8Array => hexToBytes(SESSION.bytes_hex)
 const walletState = (): MachineWalletState =>
   parseWalletState(hexToBytes(kat('wallet_2auth_passkey_root_pending_recovery').bytes_hex))
@@ -56,16 +57,16 @@ const OFF = {
   CREATOR: 205,
   CASH_COUNT: 271,
   CASH_0: 272,
-  CASH_1: 360,
-  SLEEVE_COUNT: 448,
-  SLEEVE_1: 489,
+  CASH_1: 368,
+  SLEEVE_COUNT: 464,
+  SLEEVE_1: 505,
 } as const
 
 describe('parseSessionState — layout KAT (program bytes)', () => {
-  it('decodes session_p2_sol_cash1_sleeve1_passkey_creator field-for-field', () => {
+  it('decodes session_t_p2_sol_cash1_credit1_sleeve1_passkey_creator field-for-field', () => {
     const data = sessionBytes()
-    expect(data).toHaveLength(1089)
-    expect(sessionAccountSize(2, 2)).toBe(1089)
+    expect(data).toHaveLength(1105)
+    expect(sessionAccountSize(2, 2)).toBe(1105)
 
     const s: SessionState = parseSessionState(data)
     expect(s.bump).toBe(0xfc)
@@ -86,6 +87,8 @@ describe('parseSessionState — layout KAT (program bytes)', () => {
 
     expect(s.cash).toHaveLength(2)
     expect(s.cash[0].mint).toEqual(NATIVE_SOL_MINT)
+    expect(s.cash[0].cashCredit).toBe(6_789n)
+    expect(s.cash[0].lifetimeSpent).toBe(0n)
     const c1 = field('cash_1')
     expect(s.cash[1]).toEqual({
       mint: c1.slice(0, 32),
@@ -96,6 +99,7 @@ describe('parseSessionState — layout KAT (program bytes)', () => {
       spentInPeriod: u64(c1, 64),
       lifetimeCap: u64(c1, 72),
       lifetimeSpent: u64(c1, 80),
+      cashCredit: 0n,
     })
 
     expect(s.sleeve).toHaveLength(1)
@@ -103,9 +107,9 @@ describe('parseSessionState — layout KAT (program bytes)', () => {
     expect(s.sleeve[0]).toEqual({ mint: sleeve.slice(0, 32), amount: u64(sleeve, 32) })
   })
 
-  it('sessionAccountSize is 849 + 32P + 88C', () => {
-    expect(sessionAccountSize(1, 1)).toBe(969)
-    expect(sessionAccountSize(8, 5)).toBe(1545)
+  it('sessionAccountSize is 849 + 32P + 96C', () => {
+    expect(sessionAccountSize(1, 1)).toBe(977)
+    expect(sessionAccountSize(8, 5)).toBe(1585)
   })
 
   it('sessionSolPolicy returns the all-zero-mint entry', () => {
@@ -131,8 +135,8 @@ describe('sessionStateValidation', () => {
     expect(() => parseSessionState(out)).toThrow(pattern)
   }
 
-  it('rejects a wrong tag (wallet, retired, foreign)', () => {
-    for (const tag of [0, 1, 2, 0x57, 0x99]) {
+  it("rejects a wrong tag (wallet, retired incl. the pre-credit 'S', foreign)", () => {
+    for (const tag of [0, 1, 2, 0x53, 0x57, 0x99]) {
       rejects((d) => void (d[0] = tag), `Unsupported SessionState account tag ${tag}`)
     }
   })
@@ -166,7 +170,7 @@ describe('sessionStateValidation', () => {
   it('rejects a zero wallet, a zero authority and created_slot > expiry_slot', () => {
     rejects((d) => void d.fill(0, 2, 34), /wallet/i)
     rejects((d) => void d.fill(0, 34, 66), /authority/i)
-    rejects((d) => void new DataView(d.buffer).setBigUint64(66, 600_000n, true), /created_slot/i)
+    rejects((d) => void view(d).setBigUint64(66, 600_000n, true), /created_slot/i)
   })
 
   it('rejects a repeated allowed program', () => {
@@ -178,19 +182,57 @@ describe('sessionStateValidation', () => {
   })
 
   it('rejects a cash entry that breaks a policy invariant', () => {
-    const view = (d: Uint8Array) => new DataView(d.buffer)
     // period_cap 0, period_slots 0, lifetime_cap 0
     for (const rel of [40, 48, 72]) {
       rejects((d) => void view(d).setBigUint64(OFF.CASH_1 + rel, 0n, true), /cash\[1\]/i)
     }
-    // spent_in_period > period_cap; lifetime_spent > lifetime_cap
-    rejects((d) => void view(d).setBigUint64(OFF.CASH_1 + 64, 1n << 40n, true), /cash\[1\]/i)
-    rejects((d) => void view(d).setBigUint64(OFF.CASH_1 + 80, 1n << 40n, true), /cash\[1\]/i)
+    // cash_credit > lifetime_cap
+    rejects((d) => void view(d).setBigUint64(OFF.CASH_0 + 88, u64(field('cash_0'), 72) + 1n, true), /cash\[0\]/i)
+    // credit and outstanding lifetime principal both nonzero
+    rejects((d) => void view(d).setBigUint64(OFF.CASH_0 + 80, 1n, true), /cash\[0\]/i)
+    rejects((d) => void view(d).setBigUint64(OFF.CASH_1 + 88, 1n, true), /cash\[1\]/i)
+  })
+
+  it('accepts credit up to lifetime_cap on a NET_EXPOSURE session', () => {
+    const d = sessionBytes()
+    const cap = u64(field('cash_0'), 72)
+    view(d).setBigUint64(OFF.CASH_0 + 88, cap, true)
+    expect(parseSessionState(d).cash[0].cashCredit).toBe(cap)
+  })
+
+  it('NET_EXPOSURE accepts principal above a cap (a renewal may lower caps)', () => {
+    const d = sessionBytes()
+    view(d).setBigUint64(OFF.CASH_1 + 64, 1n << 40n, true)
+    view(d).setBigUint64(OFF.CASH_1 + 80, 1n << 40n, true)
+    expect(parseSessionState(d).cash[1].lifetimeSpent).toBe(1n << 40n)
+  })
+
+  it('without NET_EXPOSURE, rejects principal above a cap and any credit', () => {
+    // The KAT minus NET_EXPOSURE and its credit parses.
+    const gross = (d: Uint8Array) => {
+      d[OFF.FLAGS] = 0
+      view(d).setBigUint64(OFF.CASH_0 + 88, 0n, true)
+    }
+    const g = sessionBytes()
+    gross(g)
+    parseSessionState(g)
+    // spent_in_period > period_cap; lifetime_spent > lifetime_cap; any credit
+    for (const rel of [64, 80]) {
+      rejects((d) => {
+        gross(d)
+        view(d).setBigUint64(OFF.CASH_1 + rel, 1n << 40n, true)
+      }, /cash\[1\]/i)
+    }
+    rejects((d) => void (d[OFF.FLAGS] = 0), /cash\[0\]/i)
   })
 
   it('rejects a repeated cash mint and a session without the SOL budget', () => {
     rejects((d) => void d.fill(0, OFF.CASH_1, OFF.CASH_1 + 32), /cash\[1\]/i)
     rejects((d) => void d.fill(0xc0, OFF.CASH_0, OFF.CASH_0 + 32), /SOL/)
+  })
+
+  it('rejects a sleeve mint that is also a cash mint', () => {
+    rejects((d) => void d.copyWithin(OFF.SLEEVE_COUNT + 1, OFF.CASH_1, OFF.CASH_1 + 32), /sleeve\[0\]/i)
   })
 
   it('rejects a repeated sleeve mint', () => {

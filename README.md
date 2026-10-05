@@ -319,7 +319,7 @@ Construct with `compileV1Transaction`, add authority evidence, call `optimizeV1T
 
 **dApp input accepts legacy, v0 and v1.** `normalizeDappTransaction(input, connection)` (used by `SoulPassWalletAdapter.sendTransaction`) resolves v0 lookup tables over RPC (missing or deactivated → error), drops the dApp's ComputeBudget instructions and v1 CU / fee config (`stripComputeBudget`), keeps a heap request (32–256 KiB, 1 KiB steps), and returns the unsigned v1 draft the wallet wraps in Execute.
 
-The wallet ABI has separate funds (N), session (S) and governance (G) nonces; every `compute*Message` names the one it binds, and session-key instructions and RevokeSession bind the session's generation. Contract-derived layout and signing vectors are shared with Swift and the relay.
+The wallet ABI has separate funds (N), session (S) and governance (G) nonces; every `compute*Message` names the one it binds, and session-key instructions and RevokeSession bind the session's generation. `computeCreateSessionMessage` also requires `priorGeneration`: the `generation` of the live session it renews in place (read with `parseSessionState`), `0n` for a create. Session accounts are tag `'T'` (0x54) with 96-byte cash entries carrying `cashCredit`. Contract-derived layout and signing vectors are shared with Swift and the relay.
 
 For the same signatures and priority fee, v1 does not inherently charge less than v0+ALT. The savings come from removing ALT setup/extension transactions and rent deposits, and from combining operations that otherwise required multiple envelopes. ALT deposits are refundable rent-exempt balances, not burned transaction fees. Fewer bytes alone do not reduce Solana's base fee.
 

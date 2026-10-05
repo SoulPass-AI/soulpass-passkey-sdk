@@ -171,8 +171,13 @@ const RECOMPUTE: Record<string, Recompute> = {
   create_session: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
     const base = { ...scope, fundsNonce: counter }
-    const [sessionNonce, sessionDataHash] = take(rest, 2)
-    return computeCreateSessionMessage({ ...base, sessionNonce: u64(sessionNonce!), sessionDataHash: sessionDataHash! })
+    const [sessionNonce, priorGeneration, sessionDataHash] = take(rest, 3)
+    return computeCreateSessionMessage({
+      ...base,
+      sessionNonce: u64(sessionNonce!),
+      priorGeneration: u64(priorGeneration!),
+      sessionDataHash: sessionDataHash!,
+    })
   },
   revoke_session: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
@@ -427,11 +432,22 @@ describe('authority message guards', () => {
     expect(() => computeSetThresholdMessage({ ...scope, fundsNonce: 5n, newThreshold: 1 })).toThrow()
   })
 
-  it('CreateSession binds N and S in their own positions', () => {
+  it('CreateSession binds N, S and the prior generation in their own positions', () => {
     const hash = new Uint8Array(32).fill(7)
-    const a = computeCreateSessionMessage({ ...scope, fundsNonce: 5n, sessionNonce: 11n, sessionDataHash: hash })
-    const b = computeCreateSessionMessage({ ...scope, fundsNonce: 11n, sessionNonce: 5n, sessionDataHash: hash })
-    expect(hex(a)).not.toBe(hex(b))
+    const msg = (fundsNonce: bigint, sessionNonce: bigint, priorGeneration: bigint) =>
+      hex(computeCreateSessionMessage({ ...scope, fundsNonce, sessionNonce, priorGeneration, sessionDataHash: hash }))
+    expect(msg(5n, 11n, 0n)).not.toBe(msg(11n, 5n, 0n))
+    // A create (0) and the renewal of a specific incarnation are distinct approvals.
+    expect(msg(5n, 11n, 0n)).not.toBe(msg(5n, 11n, 4n))
+    expect(msg(5n, 11n, 4n)).not.toBe(msg(5n, 4n, 11n))
+  })
+
+  it('CreateSession requires priorGeneration', () => {
+    const hash = new Uint8Array(32).fill(7)
+    // @ts-expect-error — omitting priorGeneration is a type error and throws at runtime.
+    expect(() => computeCreateSessionMessage({ ...scope, fundsNonce: 5n, sessionNonce: 11n, sessionDataHash: hash })).toThrow(
+      RangeError,
+    )
   })
 
   it('rejects operands of the wrong width instead of hashing them', () => {

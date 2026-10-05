@@ -343,8 +343,8 @@ describe('parseWalletState — layout KAT (program bytes)', () => {
   })
 
   it('never decodes the session KAT image as a wallet', () => {
-    const data = hexToBytes(kat('session_p2_sol_cash1_sleeve1_passkey_creator').bytes_hex)
-    expect(() => parseWalletState(data)).toThrow('Unsupported MachineWallet account tag 83')
+    const data = hexToBytes(kat('session_t_p2_sol_cash1_credit1_sleeve1_passkey_creator').bytes_hex)
+    expect(() => parseWalletState(data)).toThrow('Unsupported MachineWallet account tag 84')
   })
 
   it('rejectsLengthMismatch', () => {

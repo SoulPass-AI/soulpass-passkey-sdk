@@ -7,8 +7,8 @@ import * as C from '../../src/wire-format/constants'
 describe('machine-wallet constants', () => {
   it('account tags', () => {
     expect(C.WALLET_ACCOUNT_TAG).toBe(0x57)
-    expect(C.SESSION_ACCOUNT_TAG).toBe(0x53)
-    expect(C.RETIRED_ACCOUNT_TAGS).toEqual([0, 1, 2])
+    expect(C.SESSION_ACCOUNT_TAG).toBe(0x54)
+    expect(C.RETIRED_ACCOUNT_TAGS).toEqual([0, 1, 2, 0x53])
     expect(C.RETIRED_ACCOUNT_TAGS).not.toContain(C.WALLET_ACCOUNT_TAG)
     expect(C.RETIRED_ACCOUNT_TAGS).not.toContain(C.SESSION_ACCOUNT_TAG)
   })
@@ -44,7 +44,7 @@ describe('machine-wallet constants', () => {
     expect(C.AUTHORITY_SLOT_SIZE).toBe(34)
     expect(C.WALLET_HEADER_SIZE).toBe(186)
     expect(C.SESSION_HEADER_SIZE).toBe(109)
-    expect(C.CASH_MINT_STATE_SIZE).toBe(88)
+    expect(C.CASH_MINT_STATE_SIZE).toBe(96)
     expect(C.SLEEVE_ENTRY_SIZE).toBe(40)
   })
 

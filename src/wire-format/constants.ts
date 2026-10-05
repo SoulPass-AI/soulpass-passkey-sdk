@@ -11,10 +11,13 @@ import { isAllZero } from './_bytes';
 
 /** `state::WALLET_ACCOUNT_TAG` (`b'W'`): byte 0 of every MachineWallet account. */
 export const WALLET_ACCOUNT_TAG = 0x57;
-/** `state::SESSION_ACCOUNT_TAG` (`b'S'`): byte 0 of every SessionState account. */
-export const SESSION_ACCOUNT_TAG = 0x53;
-/** `state::RETIRED_ACCOUNT_TAGS`: byte-0 values earlier builds wrote; never reused. */
-export const RETIRED_ACCOUNT_TAGS: readonly number[] = Object.freeze([0, 1, 2]);
+/** `state::SESSION_ACCOUNT_TAG` (`b'T'`): byte 0 of every SessionState account. */
+export const SESSION_ACCOUNT_TAG = 0x54;
+/**
+ * `state::RETIRED_ACCOUNT_TAGS`: byte-0 values earlier builds wrote; never
+ * reused. `'S'` (0x53) is the session layout before `cash_credit`.
+ */
+export const RETIRED_ACCOUNT_TAGS: readonly number[] = Object.freeze([0, 1, 2, 0x53]);
 
 /** `state::MAX_AUTHORITIES`. */
 export const MAX_AUTHORITIES = 16;
@@ -65,7 +68,7 @@ export const WALLET_HEADER_SIZE = 186;
 /** `SessionState::HEADER_SIZE`. */
 export const SESSION_HEADER_SIZE = 109;
 /** `CashMintState::SIZE`. */
-export const CASH_MINT_STATE_SIZE = 88;
+export const CASH_MINT_STATE_SIZE = 96;
 /** `SleeveEntry::SIZE`. */
 export const SLEEVE_ENTRY_SIZE = 40;
 

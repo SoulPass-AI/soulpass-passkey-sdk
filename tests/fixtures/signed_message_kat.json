@@ -78,9 +78,9 @@
       "name": "create_session_local",
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_create_session_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "session_nonce_le", "session_data_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0b00000000000000", "3333333333333333333333333333333333333333333333333333333333333333"],
-      "keccak256_hex": "efd91ce551cb000c3e6f0c24012bcd94d1644ee793a49cd0437317afd57b78b2"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "session_nonce_le", "prior_generation_le", "session_data_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0b00000000000000", "0807060504030201", "3333333333333333333333333333333333333333333333333333333333333333"],
+      "keccak256_hex": "5695253e4cd1cb618b2989ae22655964fe9c0091b7d667c10cd0f4bdce6ca0ab"
     },
     {
       "name": "rotate_root_local",
@@ -230,9 +230,9 @@
       "name": "create_session_devnet",
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_create_session_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "session_nonce_le", "session_data_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0b00000000000000", "3333333333333333333333333333333333333333333333333333333333333333"],
-      "keccak256_hex": "2ca6e8f39441195fa4dd5e2aa67672b4fa7b1e847d9c8b0016a82eb9e832e22f"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "session_nonce_le", "prior_generation_le", "session_data_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0b00000000000000", "0807060504030201", "3333333333333333333333333333333333333333333333333333333333333333"],
+      "keccak256_hex": "ba3f7bd5ce8d20e0c27093539f86a6bc8de0c019e898978572c34974585b2249"
     },
     {
       "name": "rotate_root_devnet",
@@ -382,9 +382,9 @@
       "name": "create_session_mainnet",
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_create_session_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "session_nonce_le", "session_data_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0b00000000000000", "3333333333333333333333333333333333333333333333333333333333333333"],
-      "keccak256_hex": "449706b4a79c49e009ad06224861f53f907a02494f0000ca31046fdc3d89700f"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "session_nonce_le", "prior_generation_le", "session_data_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0b00000000000000", "0807060504030201", "3333333333333333333333333333333333333333333333333333333333333333"],
+      "keccak256_hex": "04ee174bb68e16de9930019719caa62121424233d0949cda09e41b255f77568b"
     },
     {
       "name": "rotate_root_mainnet",

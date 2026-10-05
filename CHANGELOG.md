@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.0 — 2026-10-05（machine-wallet c455a30：session 'T'、cash_credit、续期绑定 prior_generation）
+
+与 machine-wallet `c455a30` 逐字节对齐（`layout_kat.json` / `signed_message_kat.json` 原样重拷）。
+破坏性变更，未发布基线不保留旧形态。
+
+- `SESSION_ACCOUNT_TAG = 0x54`（`'T'`）；`'S'`（0x53）退役，进入 `RETIRED_ACCOUNT_TAGS = [0, 1, 2, 0x53]`。
+- `CASH_MINT_STATE_SIZE = 96`：cash 条目末尾新增 `cash_credit` u64（偏移 88）。
+  `CashMintState.cashCredit`；`sessionAccountSize(P, C) = 849 + 32P + 96C`（977..1585）。
+- `parseSessionState` 只认 `'T'` 且长度精确，并镜像程序 `deserialize` 的新不变量：
+  `cashCredit ≤ lifetimeCap`、`cashCredit` 与 `lifetimeSpent` 不同时非零；非 NET_EXPOSURE
+  session 不得有 credit、计数不得超上限（NET_EXPOSURE 续期可把上限降到未偿本金以下，照样可读）；
+  活跃 sleeve mint 不得同时是 cash mint。
+- **`computeCreateSessionMessage` 新增必填 `priorGeneration`**：签名载荷为
+  `… || session_nonce || prior_generation || session_data_hash`。续期（同一 PDA 上活着的
+  NET_EXPOSURE session）传该账户的 `generation`，新建传 `0n`；缺省在类型上报错、运行时抛 `RangeError`。
+- 指令字节、policy wire、`hashSessionData` 不变。
+
 ## 0.7.2 — 2026-10-03
 
 - `fetchComputeUnitPriceMicroLamports(rpc, writableAccountKeys, { priorityLevel? })`：与

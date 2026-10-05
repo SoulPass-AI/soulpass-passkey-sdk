@@ -1,17 +1,17 @@
 /**
- * Off-chain reader for the SessionState account (`'S'` tag) and the
+ * Off-chain reader for the SessionState account (`'T'` tag) and the
  * liveness predicate `SessionExecute` enforces.
  *
  * Mirrors `machine-wallet/program/src/state.rs::SessionState` (the validating
  * `deserialize` path) and the session checks in
  * `processor/session_execute.rs`. Pinned by `tests/fixtures/layout_kat.json`
- * (`session_p2_sol_cash1_sleeve1_passkey_creator`).
+ * (`session_t_p2_sol_cash1_credit1_sleeve1_passkey_creator`).
  *
  * Layout (`sessionAccountSize(P, C)` bytes, integers LE):
  *
  * | offset            | field                  | type                |
  * |-------------------|------------------------|---------------------|
- * | 0                 | tag                    | u8 (= 'S')          |
+ * | 0                 | tag                    | u8 (= 'T')          |
  * | 1                 | bump                   | u8                  |
  * | 2                 | wallet                 | [u8; 32]            |
  * | 34                | authority              | [u8; 32]            |
@@ -29,8 +29,12 @@
  * | B + 66            | rent_payer             | [u8; 32]            |
  * | B + 98            | cash_count             | u8 (C, 0..=5)       |
  * | B + 99            | cash                   | [CashMintState; C]  |
- * | B + 99 + 88C      | sleeve_count           | u8 (0..=16)         |
- * | B + 100 + 88C     | sleeve                 | [SleeveEntry; 16]   |
+ * | B + 99 + 96C      | sleeve_count           | u8 (0..=16)         |
+ * | B + 100 + 96C     | sleeve                 | [SleeveEntry; 16]   |
+ *
+ * A cash entry (96 B) is `mint(32) | per_tx_cap | period_cap | period_slots |
+ * period_start_slot | spent_in_period | lifetime_cap | lifetime_spent |
+ * cash_credit` (u64s at 32..96).
  *
  * The sleeve is pre-allocated at full capacity; slots past `sleeve_count` are
  * ignored, as on chain.
@@ -44,6 +48,7 @@ import {
   MAX_SLEEVE_MINTS,
   isNativeSolMint,
   SESSION_ACCOUNT_TAG,
+  SESSION_FLAG_NET_EXPOSURE,
   SESSION_FLAGS_KNOWN,
   SESSION_HEADER_SIZE,
   SLEEVE_ENTRY_SIZE,
@@ -53,11 +58,23 @@ import { hasZeroCashCap, type CashMintPolicy } from './session';
 import { readKnownSlot, type WalletAuthoritySlot } from './authority-slot';
 import type { MachineWalletState } from '../wallet-state';
 
-/** A session's per-mint budget: the signed policy plus the program's running counters. */
+/**
+ * A session's per-mint budget: the signed policy plus the program's ledger.
+ *
+ * `spentInPeriod` / `lifetimeSpent` are outstanding principal. On a
+ * NET_EXPOSURE session an inflow repays principal first and the surplus
+ * becomes `cashCredit` (capped at `lifetimeCap`), which the next outflow
+ * spends before drawing new principal; `perTxCap` still bounds the whole
+ * outflow. Credit and outstanding lifetime principal are never both nonzero.
+ * An owner renewal may lower caps below outstanding principal, so on a
+ * NET_EXPOSURE session `spentInPeriod` / `lifetimeSpent` can exceed their caps.
+ */
 export interface CashMintState extends CashMintPolicy {
   periodStartSlot: bigint;
   spentInPeriod: bigint;
   lifetimeSpent: bigint;
+  /** Reusable proceeds beyond outstanding principal (`cash_credit`), ≤ `lifetimeCap`. */
+  cashCredit: bigint;
 }
 
 /** A purchased non-cash balance the session tracks (`SleeveEntry`). */
@@ -126,7 +143,7 @@ const budgetOffset = (programCount: number): number => SESSION_HEADER_SIZE + pro
 
 /**
  * Exact account length for `programCount` allowed programs and `cashCount`
- * cash entries (`SessionState::size`): `849 + 32P + 88C`.
+ * cash entries (`SessionState::size`): `849 + 32P + 96C`.
  */
 export function sessionAccountSize(programCount: number, cashCount: number): number {
   if (!Number.isInteger(programCount) || programCount < 0 || programCount > MAX_ALLOWED_PROGRAMS) {
@@ -148,7 +165,8 @@ export function sessionAccountSize(programCount: number, cashCount: number): num
  * Parse a raw account body into a typed {@link SessionState}, rejecting
  * everything `SessionState::deserialize` rejects:
  *
- * - byte 0 is not `'S'` (`Unsupported SessionState account tag <n>`);
+ * - byte 0 is not `'T'` (`Unsupported SessionState account tag <n>`) — the
+ *   retired `'S'` layout included;
  * - unknown `flags` bits;
  * - `allowed_programs_count` outside 1..=8, `cash_count` above 5, or a length
  *   other than exactly {@link sessionAccountSize}`(P, C)`;
@@ -156,9 +174,12 @@ export function sessionAccountSize(programCount: number, cashCount: number): num
  * - a repeated allowed program, cash mint or sleeve mint;
  * - an unknown creator `sig_scheme`;
  * - a cash entry with a zero `period_cap` / `period_slots` / `lifetime_cap`,
- *   or a spent counter above its cap;
+ *   `cash_credit` above `lifetime_cap`, or both `cash_credit` and
+ *   `lifetime_spent` nonzero;
+ * - without NET_EXPOSURE, a spent counter above its cap or any `cash_credit`
+ *   (only a NET_EXPOSURE session is renewed or earns credit);
  * - no SOL budget (no entry under {@link NATIVE_SOL_MINT});
- * - `sleeve_count` above 16.
+ * - `sleeve_count` above 16, or a live sleeve mint that is also a cash mint.
  *
  * Every byte array in the result is a copy, never a view onto `data`.
  */
@@ -221,6 +242,7 @@ export function parseSessionState(data: Uint8Array): SessionState {
 
   const creator = readKnownSlot(data, base + BUDGET.CREATOR, 'creator');
 
+  const netExposure = (flags & SESSION_FLAG_NET_EXPOSURE) !== 0;
   const cash: CashMintState[] = [];
   for (let i = 0; i < cashCount; i++) {
     const o = base + BUDGET.CASH + i * CASH_MINT_STATE_SIZE;
@@ -233,11 +255,16 @@ export function parseSessionState(data: Uint8Array): SessionState {
       spentInPeriod: u64(o + 64),
       lifetimeCap: u64(o + 72),
       lifetimeSpent: u64(o + 80),
+      cashCredit: u64(o + 88),
     };
     if (
       hasZeroCashCap(e) ||
-      e.spentInPeriod > e.periodCap ||
-      e.lifetimeSpent > e.lifetimeCap
+      (e.cashCredit > 0n && e.lifetimeSpent > 0n) ||
+      e.cashCredit > e.lifetimeCap ||
+      // Only a NET_EXPOSURE session holds credit or is renewed (a renewal
+      // may lower caps below outstanding principal).
+      (!netExposure &&
+        (e.spentInPeriod > e.periodCap || e.lifetimeSpent > e.lifetimeCap || e.cashCredit !== 0n))
     ) {
       throw new Error(`SessionState cash[${i}] breaks a policy invariant`);
     }
@@ -259,6 +286,9 @@ export function parseSessionState(data: Uint8Array): SessionState {
   for (let i = 0; i < sleeveCount; i++) {
     const o = sleeveCountOff + 1 + i * SLEEVE_ENTRY_SIZE;
     const mint = data.slice(o, o + 32);
+    if (cash.some((c) => bytesEqual(c.mint, mint))) {
+      throw new Error(`SessionState sleeve[${i}] is also a cash mint`);
+    }
     if (sleeve.some((prev) => bytesEqual(prev.mint, mint))) {
       throw new Error(`SessionState sleeve[${i}] repeats an earlier mint`);
     }

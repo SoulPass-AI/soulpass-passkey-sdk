@@ -18,7 +18,7 @@
  * | Field             | Counter                         | Operations |
  * |-------------------|---------------------------------|------------|
  * | `fundsNonce`      | funds `nonce` (N)               | Execute, ExecuteEphemeral, AdvanceNonce, OwnerCloseSession, CreateSession (+ `sessionNonce`) |
- * | `sessionNonce`    | `session_nonce` (S)             | BumpEpoch; CreateSession's trailing operand |
+ * | `sessionNonce`    | `session_nonce` (S)             | BumpEpoch; CreateSession's first operand (then `priorGeneration`) |
  * | `generation`      | target session's generation     | RevokeSession |
  * | `governanceNonce` | `governance_nonce` (G)          | RotateRoot, Propose/Cancel/ExecuteRecovery, AddAuthority approval and PoP, RemoveSelf/Other, SetThreshold, SetRecoveryThreshold, CloseWallet |
  *
@@ -189,17 +189,26 @@ export function computeAdvanceNonceMessage(args: FundsNonceBound): Uint8Array {
 
 /**
  * CreateSession: preamble (funds nonce N) `|| session_nonce(8) ||
- * session_data_hash(32)`. Binds N and S, consumes only N; the created
- * session's generation is the post-increment N.
+ * prior_generation(8) || session_data_hash(32)`. Binds N and S, consumes only
+ * N; the created session's generation is the post-increment N.
+ *
+ * `priorGeneration` is the `generation` of the live session already at the
+ * session PDA (an in-place renewal of a NET_EXPOSURE session), or `0n` when
+ * the PDA holds no session (a create). Read it from the account
+ * ({@link import('./session-state').parseSessionState}) — the owner approves
+ * a create or the renewal of one specific incarnation, never whichever state
+ * the account happens to be in at submission. Required, so no caller can omit
+ * it by accident.
  */
 export function computeCreateSessionMessage(
-  args: FundsNonceBound & { sessionNonce: bigint; sessionDataHash: Uint8Array },
+  args: FundsNonceBound & { sessionNonce: bigint; priorGeneration: bigint; sessionDataHash: Uint8Array },
 ): Uint8Array {
   return hashWalletOp(
     CREATE_SESSION_TAG,
     args,
     args.fundsNonce,
     u64LE(args.sessionNonce),
+    u64LE(args.priorGeneration),
     requireLength(args.sessionDataHash, 32, 'sessionDataHash'),
   );
 }
