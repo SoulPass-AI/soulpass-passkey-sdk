@@ -90,7 +90,7 @@ export interface SoulPassWalletConfig {
   apiUrl?: string
   /**
    * Calling product's productType (matches matrix-backend's
-   * `ProductType.getName()`, e.g. `'tens'`, `'tigerpass'`). Forwarded to the
+   * `ProductType.getName()`, e.g. `'tens'`, `'siya'`). Forwarded to the
    * popup so the matrix-user JWT is stored under the *caller's* product
    * namespace in Redis — not the popup's own (`'soulpass'`).
    *
