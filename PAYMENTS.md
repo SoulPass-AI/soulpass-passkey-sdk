@@ -67,7 +67,6 @@ the merchant page), but it must never be logged and never appear in a URL.
 
 ## When no route is funded
 
-`PAYMENT_INSUFFICIENT_FUNDS` is now the *second* thing that happens, not the first.
 When every offered route is short, the wallet holds its balance reply and offers a
 card top-up inside the same checkout; the PaymentIntent is untouched and resumes on
 its own once the funds land. The top-up is sized to actually close the gap, not to
@@ -81,10 +80,9 @@ A payer who cancels at the top-up screen has declined the payment, not exposed a
 funding shape: that surfaces as `USER_REJECTED` — the same silent decline as
 closing the window — never as `PAYMENT_INSUFFICIENT_FUNDS`.
 
-`PAYMENT_INSUFFICIENT_FUNDS` still reaches you unchanged when a top-up cannot
-close the gap: the shortfall is on a chain the onramp does not deliver to, or the
-settlement asset is one it does not sell. Treat it exactly as before. What changed
-is how rarely you should expect it, not what it means.
+`PAYMENT_INSUFFICIENT_FUNDS` reaches you only when a top-up cannot close the gap:
+the shortfall is on a chain the onramp does not deliver to, or the settlement asset
+is one it does not sell.
 
 ## Protocol fee semantics
 
@@ -247,8 +245,8 @@ Products that need centrally managed recipients and signed webhooks can keep
 using merchant-server `POST /payment-intents/create` with the Store HMAC
 contract, then call `beginPayment(clientSecret)` in the browser. In that mode,
 the backend reads recipients from Store configuration and sends terminal-state
-webhooks through registered endpoints. Direct mode intentionally publishes no
-webhook and performs no Store lookup.
+webhooks through registered endpoints. Direct mode performs no Store lookup; its
+only webhook is the per-intent `webhookUrl` described above.
 
 `PaymentExecution` is a discriminated union:
 

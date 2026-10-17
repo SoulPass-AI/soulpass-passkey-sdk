@@ -42,6 +42,8 @@
 - **行为变化**：`optimizeV1Transaction(rpc, tx, { computeUnitPriceMicroLamports?, priorityFeeRpc? })`
   不传价格时不再保留草稿总费，而是按交易写锁账户估价（问 `priorityFeeRpc`，缺省 `rpc`，与模拟并行）；
   显式价格（市场 Jupiter 腿、CLI `--cu-price`）照旧优先。`rpc` 也接受 JSON-RPC caller。
+- **修复（`d30b9d5`）**：外部钱包 v0 / legacy 编译把 ComputeBudget 指令**追加**在调用方指令之后
+  （0.7.0 为前缀），固定下标（如 0 号 Ed25519 预编译）保持有效。
 
 ## 0.7.0 — 2026-10-03（machine-wallet 1853b6e：v1 交易、N/S/G 三计数器、session generation）
 
