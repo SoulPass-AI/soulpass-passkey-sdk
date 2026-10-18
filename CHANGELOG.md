@@ -1,6 +1,21 @@
 # Changelog
 
-## 0.8.0 — 2026-10-05（machine-wallet c455a30：session 'T'、cash_credit、续期绑定 prior_generation）
+## 0.5.0 — 2026-10-18（相对 0.4.0 的全部变更）
+
+0.4.0 之后的六次未发布迭代（原 0.5.0 … 0.9.0）统一为这一个版本：它们都没有发 npm、也没有进生产，
+`v0.6.0` / `v0.7.1` / `v0.7.2` 三个 tag 已撤回。下列各节按时间倒序保留原记录，**后一节覆盖前一节**
+（例如原 0.5.x 的 v2 入口已在原 0.6.0 删除）；与 0.4.0 相比全部是破坏性变更。
+
+### 原 0.9.0 草稿 — 2026-10-18（支付尝试绑进签名操作）
+
+- `PaymentExecution` 携带 `paymentReference = soulpass:payment:v1:<attemptId>`：EVM 批次以一笔零地址、零值的
+  标记调用收尾，Solana `Execute` 带一条内容相同的 Memo（详见 `PAYMENTS.md`）。
+- payment-binding（`paymentReferenceFor`、`paymentMarkerCall`、`paymentMemoData`）从 `./protocol` 导出给弹窗；
+  商户 SDK 不重算绑定，由弹窗对照规范 attempt 强制。
+- single-flight 槽位按 session 持有：已取消 session 的迟到请求不能释放后继者的槽位，也不能改写自己的取消结果。
+- 文档写明 test 与 production 共享按 RP 划分的 PRF 访问。
+
+### 原 0.8.0 草稿 — 2026-10-05（machine-wallet c455a30：session 'T'、cash_credit、续期绑定 prior_generation）
 
 与 machine-wallet `c455a30` 逐字节对齐（`layout_kat.json` / `signed_message_kat.json` 原样重拷）。
 破坏性变更，未发布基线不保留旧形态。
@@ -17,7 +32,7 @@
   NET_EXPOSURE session）传该账户的 `generation`，新建传 `0n`；缺省在类型上报错、运行时抛 `RangeError`。
 - 指令字节、policy wire、`hashSessionData` 不变。
 
-## 0.7.2 — 2026-10-03
+### 原 0.7.2 草稿 — 2026-10-03
 
 - `fetchComputeUnitPriceMicroLamports(rpc, writableAccountKeys, { priorityLevel? })`：与
   `estimateComputeUnitPriceMicroLamports` 同一算法（Helius `High` → `getRecentPrioritizationFees` p75，
@@ -26,7 +41,7 @@
   `estimateComputeUnitPriceMicroLamports` 行为不变（失败 → `0n` + `console.warn`）。
 - 含 `f6f5b23` 的 v1 交易辅助简化（无线格式变化）。
 
-## 0.7.1 — 2026-10-03（D6：优先费价格来源）
+### 原 0.7.1 草稿 — 2026-10-03（D6：优先费价格来源）
 
 - `estimateComputeUnitPriceMicroLamports(rpc, writableAccountKeys, { priorityLevel? })`：按交易写锁账户
   定价。先 Helius `getPriorityFeeEstimate`（accountKeys 模式、`High`，不传序列化交易）；方法不可用
@@ -45,12 +60,12 @@
 - **修复（`d30b9d5`）**：外部钱包 v0 / legacy 编译把 ComputeBudget 指令**追加**在调用方指令之后
   （0.7.0 为前缀），固定下标（如 0 号 Ed25519 预编译）保持有效。
 
-## 0.7.0 — 2026-10-03（machine-wallet 1853b6e：v1 交易、N/S/G 三计数器、session generation）
+### 原 0.7.0 草稿 — 2026-10-03（machine-wallet 1853b6e：v1 交易、N/S/G 三计数器、session generation）
 
 与 machine-wallet `1853b6e`（含 `acd4a62`）逐字节对齐。均为破坏性变更，未发布的
 基线不保留旧形态。
 
-### 交易格式（新入口 `@soulpass/passkey-sdk/solana-transaction`）
+#### 交易格式（新入口 `@soulpass/passkey-sdk/solana-transaction`）
 
 - 一方交易只有 v1：`SolanaTransaction` / `SolanaMessage` / `compileV1Transaction`
   （Kit 8.2.0 编解码，0x81、账户内联 ≤ 64、config 带 CU / loaded-accounts / **总**优先费
@@ -74,7 +89,7 @@
   `{'legacy', 0, 1}`，带 ComputeBudget 前缀的 Anchor 草稿不再抛错。
 - `SignTransactionOptions.altAddresses` 与 SIGN_TRANSACTION 的 `altAddresses` 删除。
 
-### 计数器（D4）
+#### 计数器（D4）
 
 - 钱包头 186 字节：`session_nonce`（S）@170、`governance_nonce`（G）@178；
   `MachineWalletState.sessionNonce` / `.governanceNonce`。`nonce` 仍是资金计数器 N。
@@ -97,12 +112,12 @@
   root + max(旧, k)；SetRecoveryThreshold(k) 需 root + max(spending, k)；AddAuthority 需
   root + threshold；两种移除需幸存密钥满足移除后阈值，被移除的密钥不计）。
 
-### 删除
+#### 删除
 
 - `resourcesFromComputeBudget`（市场改发 `computeUnitPriceMicroLamports`；dApp 输入只剥离，
   不翻译）。
 
-### 其他
+#### 其他
 
 - KAT：三份程序向量重新逐字节拷贝（`revoke_session` 三条哈希随 generation 改变；字段名
   `governance_nonce_le` / `session_nonce_le` / `generation_le`）。`check-fixtures` 改为与
@@ -110,12 +125,12 @@
   P-256 向量仍与 Swift 共享。
 - 依赖：`@solana/kit` 8.2.0、`@noble/curves` 1.9.7；peer `@solana/web3.js` ≥ 1.99.0。
 
-## 0.6.0 — 2026-09-30（machine-wallet 单一布局）
+### 原 0.6.0 草稿 — 2026-09-30（machine-wallet 单一布局）
 
 `./protocol` 与 machine-wallet `feat/session-alignment` 程序逐字节对齐。钱包账户、
 session 账户、签名消息、指令各只有一种形态：没有版本字段，没有 v1/v2/v0 分支。
 
-### 账户布局
+#### 账户布局
 
 - **钱包（byte 0 = `'W'`）**：170 字节头（`bump`、`wallet_id`、`threshold`、
   `authority_count`、`nonce`、`creation_slot`、`vault_bump`、`root`、
@@ -129,7 +144,7 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
   当槽仍有效）、`walletCreationSlot` 与 `authorityEpoch` 仍与钱包相等；session 与
   钱包是否配对由调用方负责。`sessionSolPolicy` 取 SOL 预算。
 
-### 签名消息与指令
+#### 签名消息与指令
 
 - 19 个操作的 `compute*Message`（标签均为 `_v1`，见 `MACHINE_WALLET_TAGS`）：
   含 `computeRemoveSelfMessage` / `computeRemoveOtherMessage`、恢复三件
@@ -154,14 +169,14 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
   `hashSessionData`。校验顺序与链上一致（解码器的 program 数量、cash 数量先于
   handler 的字段检查），多处违规时报出程序会报的那一个。
 
-### 常量、错误码、PDA
+#### 常量、错误码、PDA
 
 - 程序常量（`wire-format/constants.ts`）：账户标签、容量上限、槽数、头尺寸、
   `NATIVE_SOL_MINT` + `isNativeSolMint` 等，每个值只定义一处。
 - 程序错误码：`MachineWalletError`、`RETIRED_ERROR_CODES`、`describeMachineWalletError`。
 - `deriveWalletPda` / `deriveSessionPda`；种子 `WALLET_SEED` / `VAULT_SEED` / `SESSION_SEED`。
 
-### 已删除
+#### 已删除
 
 `WALLET_LAYOUT_V1/V2`、`V1_*` 偏移、`*_V2_TAG` 与 `ADOPT_ROOT_TAG` /
 `REMOVE_AUTHORITY_TAG`、`compute*V2Message` / `computeAdoptRootMessage` /
@@ -186,16 +201,16 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
 - `asVaultPda` / `asStatePda` 删除，改用 `validateVaultPda` / `validateStatePda`。
 - `./payments` 的 `PaymentErrorContext` 删除，改用 `SoulPassErrorContext`。
 
-### 其他
+#### 其他
 
 - KAT：`signed_message_kat.json`（57 条 = 19 操作 × 3 域）、`session_data_kat.json`、
   `layout_kat.json` 均逐字节取自程序，`npm test` 校验副本新鲜度。
 
-## 0.5.1 — 2026-09-29（读 v2 钱包）
+### 原 0.5.1 草稿 — 2026-09-29（读 v2 钱包）
 
 > 本条描述的是已删除的过渡期程序（v1/v2 双布局）；0.6.0 起不再适用。
 
-### Fixed
+#### Fixed
 
 - `parseWalletState` / `getWalletState` / `predictNextExecuteNonce` 读得了
   machine-wallet v2 钱包（version 2 = v1 布局 + `53 + N×34` 处 34 字节 root 槽）。
@@ -207,17 +222,17 @@ session 账户、签名消息、指令各只有一种形态：没有版本字段
 - KAT：`v2_layout_kat.json` 的 `wallet_v2_2auth_passkey_root` 逐字段钉住，session v2
   镜像钉为拒绝；layout 循环加数量断言。
 
-### Note
+#### Note
 
 - v1 钱包带尾随字节现在报错（此前宽容）；链上不存在此类账户（程序同样拒绝）。
 
-## 0.5.0 — 2026-09-29（machine-wallet v2）
+### 原 0.5.0 草稿 — 2026-09-29（machine-wallet v2）
 
 > 本条描述的是已删除的过渡期程序（v1/v2 双布局）；0.6.0 起不再适用。
 
 纯新增，无破坏性变更；与 machine-wallet ca6073d 的 v2 程序对齐。
 
-### Added
+#### Added
 
 - `MachineWalletDisc.RotateRoot`（17）/ `CreateSessionV2`（18）/ `AdoptRoot`（19）。
 - v2 签名消息：`computeCreateSessionV2Message`、`computeRotateRootMessage`、

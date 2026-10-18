@@ -10,7 +10,7 @@ SoulPass exposes two intentional lanes:
 
 ## Multichain checkout flow
 
-Every 0.9 attempt carries `paymentReference = soulpass:payment:v1:<attemptId>`,
+Every 0.5 attempt carries `paymentReference = soulpass:payment:v1:<attemptId>`,
 derived from the server's random `attemptId` (the wallet popup cross-checks
 the derivation against the canonical prepared attempt before signing). The reference lives inside the operation the wallet authority
 signs, so a transaction cannot be claimed for an attempt it was not signed for:
@@ -32,7 +32,7 @@ Unavailable or diverging chain evidence remains `processing`.
 The wallet fetches `display.prepared` itself and rejects any execution that
 differs from that canonical attempt. There is no fallback to unbound execution
 or to a previous payment protocol; the Web vendor gate checks the SDK's
-`v0.9.0` release tag.
+`v0.5.0` release tag.
 
 ```text
 merchant browser / SDK                         wallet             payment API
