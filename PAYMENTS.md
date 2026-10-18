@@ -10,6 +10,30 @@ SoulPass exposes two intentional lanes:
 
 ## Multichain checkout flow
 
+Every 0.9 attempt carries `paymentReference = soulpass:payment:v1:<attemptId>`,
+derived from the server's random `attemptId` (the wallet popup cross-checks
+the derivation against the canonical prepared attempt before signing). The reference lives inside the operation the wallet authority
+signs, so a transaction cannot be claimed for an attempt it was not signed for:
+
+- **EVM** — a zero-address, zero-value call with the UTF-8 reference as data,
+  always the final call of the signed `executeBatchWithSignature` batch.
+- **Solana** — a Memo instruction carrying the reference, a direct inner
+  instruction of the one plain MachineWallet `Execute`. Its bytes are part of
+  the inner-instruction hash the authority signs, so the fee payer cannot add
+  or alter it.
+
+The server verifies the instruction trace, the reference and the token balance
+changes. The MachineWallet program emits no receipt log and needs no upgrade.
+`prepare` does not freeze a wallet nonce: nonces are shared counters that other
+operations (swaps, governance, sessions) also advance, so a frozen value would
+strand the attempt. The wallet signs with the nonce current at signing time.
+Unavailable or diverging chain evidence remains `processing`.
+
+The wallet fetches `display.prepared` itself and rejects any execution that
+differs from that canonical attempt. There is no fallback to unbound execution
+or to a previous payment protocol; the Web vendor gate checks the SDK's
+`v0.9.0` release tag.
+
 ```text
 merchant browser / SDK                         wallet             payment API
       | create direct intent (amount + recipients + Origin) ---------------->|

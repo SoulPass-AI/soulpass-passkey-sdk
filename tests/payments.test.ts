@@ -129,12 +129,13 @@ function paymentIntent(overrides: Partial<PaymentIntent> = {}): PaymentIntent {
 function solanaPrepared(): PreparedPayment {
   return {
     paymentIntent: paymentIntent({ settlement: SOLANA_OPTION }),
-    attemptId: 'pa_solana_123',
+    attemptId: 'pa_11111111111111111111111111111111',
     execution: {
       kind: 'solana_machine_wallet_transfer',
       protocol: 'solana_machine_wallet_execute_v1',
       network: 'SOLANA',
       account: SOLANA_PAYER,
+      paymentReference: 'soulpass:payment:v1:pa_11111111111111111111111111111111',
       mint: SOLANA_OPTION.assetAddress,
       recipient: SOLANA_OPTION.recipient,
       amount: SOLANA_OPTION.merchantReceives.value,
@@ -153,6 +154,7 @@ function evmPrepared(): PreparedPayment {
     network: 'BASE',
     chainId: '8453',
     account: EVM_PAYER,
+    paymentReference: 'soulpass:payment:v1:pa_22222222222222222222222222222222',
     calls: [
       { target: EVM_OPTION.assetAddress, value: '0', data: '0xa9059cbb00' },
       { target: EVM_OPTION.assetAddress, value: '0', data: '0xa9059cbb01' },
@@ -161,7 +163,7 @@ function evmPrepared(): PreparedPayment {
   }
   return {
     paymentIntent: paymentIntent({ settlement: EVM_OPTION }),
-    attemptId: 'pa_base_123',
+    attemptId: 'pa_22222222222222222222222222222222',
     execution,
   }
 }
@@ -242,12 +244,12 @@ describe('SoulPassPayments', () => {
     expect(h.provider.complete).toHaveBeenCalledWith({
       clientSecret: CLIENT_SECRET,
       paymentIntentId: 'pi_siya_123',
-      attemptId: 'pa_solana_123',
+      attemptId: 'pa_11111111111111111111111111111111',
       transactionId: SOLANA_SIGNATURE,
     })
     expect(result).toMatchObject({
       transactionId: SOLANA_SIGNATURE,
-      attemptId: 'pa_solana_123',
+      attemptId: 'pa_11111111111111111111111111111111',
       settlement: { id: SOLANA_OPTION.id },
     })
   })
@@ -716,6 +718,45 @@ describe('SoulPassPayments', () => {
     expect(() => h.payments.beginPayment(CLIENT_SECRET)).not.toThrow()
   })
 
+  it.each((['retrieve', 'prepare', 'execute', 'complete'] as const)
+    .flatMap((phase) => (['resolve', 'reject'] as const).map((ending) => [phase, ending] as const)),
+  )('a cancelled session finishing %s (%s) cannot release its successor', async (phase, ending) => {
+    const h = harness()
+    let finishPending: (() => void) | undefined
+    const hold = <T>(value: T): Promise<T> => new Promise((resolve, reject) => {
+      finishPending = () => ending === 'resolve'
+        ? resolve(value)
+        : reject(new Error('late request failure'))
+    })
+    const stall = {
+      retrieve: () => vi.mocked(h.provider.retrieve).mockImplementationOnce(() => hold(retrieved(paymentIntent()))),
+      prepare: () => vi.mocked(h.provider.prepare).mockImplementationOnce(() => hold(solanaPrepared())),
+      execute: () => h.execute.mockImplementationOnce(() => hold({ transactionId: SOLANA_SIGNATURE })),
+      complete: () => vi.mocked(h.provider.complete).mockImplementationOnce(() => hold(paymentIntent({
+        status: 'succeeded', settlement: SOLANA_OPTION, transactionId: SOLANA_SIGNATURE,
+      }))),
+    }
+    stall[phase]()
+
+    const first = h.payments.beginPayment(CLIENT_SECRET)
+    const firstFinished = first.confirm().catch(() => undefined)
+    await vi.waitFor(() => expect(finishPending).toBeTypeOf('function'))
+    first.cancel('checkout cancelled while a request was pending')
+    const second = h.payments.beginPayment(CLIENT_SECRET)
+
+    finishPending!()
+    await firstFinished
+    await expect(first.confirm()).rejects.toMatchObject({ code: 'CANCELLED' })
+    expect(() => h.payments.beginPayment(CLIENT_SECRET))
+      .toThrowError(expect.objectContaining({ code: 'PAYMENT_IN_PROGRESS' }))
+    expect(h.beginPaymentAuthorization).toHaveBeenCalledTimes(2)
+
+    second.cancel()
+    const third = h.payments.beginPayment(CLIENT_SECRET)
+    expect(h.beginPaymentAuthorization).toHaveBeenCalledTimes(3)
+    third.cancel()
+  })
+
   it('a wallet that resolves without a transaction id is status unknown', async () => {
     const h = harness()
     h.execute.mockResolvedValue({ transactionId: '' })
@@ -803,12 +844,12 @@ describe('HttpPaymentIntentProvider', () => {
     await provider.complete({
       clientSecret: CLIENT_SECRET,
       paymentIntentId: 'pi_siya_123',
-      attemptId: 'pa_solana_123',
+      attemptId: 'pa_11111111111111111111111111111111',
       transactionId: SOLANA_SIGNATURE,
     })
     expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({
       paymentIntentId: 'pi_siya_123',
-      attemptId: 'pa_solana_123',
+      attemptId: 'pa_11111111111111111111111111111111',
       transactionId: SOLANA_SIGNATURE,
     }))
   })

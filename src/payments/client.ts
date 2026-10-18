@@ -61,7 +61,7 @@ export class SoulPassPayments {
    * session's replies silently vanish. Rejecting the second call with
    * PAYMENT_IN_PROGRESS is the honest version of that failure.
    */
-  private sessionActive = false
+  private activeSession: symbol | null = null
   /** Per-browser idempotency salt, read once per client. See readOrCreateIdempotencySalt. */
   private salt: string | null = null
 
@@ -109,7 +109,10 @@ export class SoulPassPayments {
    */
   async pay(input: DirectPaymentInput): Promise<PaymentResult> {
     const direct = normalizeDirectPayment(input)
-    const authorization = this.withSessionSlot(() => this.wallet.beginPaymentAuthorization())
+    const { authorization, release } = this.withSessionSlot((release) => ({
+      authorization: this.wallet.beginPaymentAuthorization(),
+      release,
+    }))
     let created
     try {
       created = await this.provider.createDirect({
@@ -124,7 +127,7 @@ export class SoulPassPayments {
         displayToken: created.displayToken,
       })
     } catch (err) {
-      this.sessionActive = false
+      release()
       authorization.cancel('direct payment creation failed')
       throw normalizePreparationError(err)
     }
@@ -132,6 +135,7 @@ export class SoulPassPayments {
       const result = await this.paymentSession(
         created.clientSecret,
         authorization,
+        release,
         {},
         { intent: created.paymentIntent, displayToken: created.displayToken },
       ).confirm()
@@ -207,8 +211,8 @@ export class SoulPassPayments {
     options: BeginPaymentOptions = {},
   ): PaymentConfirmationSession {
     assertClientSecret(clientSecret)
-    return this.withSessionSlot(() =>
-      this.paymentSession(clientSecret, this.wallet.beginPaymentAuthorization(), options),
+    return this.withSessionSlot((release) =>
+      this.paymentSession(clientSecret, this.wallet.beginPaymentAuthorization(), release, options),
     )
   }
 
@@ -219,18 +223,24 @@ export class SoulPassPayments {
    * wedge the client. The slot is otherwise released when the session settles
    * or is cancelled.
    */
-  private withSessionSlot<T>(open: () => T): T {
-    if (this.sessionActive) {
+  private withSessionSlot<T>(open: (release: () => void) => T): T {
+    if (this.activeSession !== null) {
       throw new PaymentError(
         'PAYMENT_IN_PROGRESS',
         'Another payment is already in flight on this client. Await or cancel it before starting a new checkout.',
       )
     }
-    this.sessionActive = true
+    const owner = Symbol('payment session')
+    this.activeSession = owner
+    // A cancelled session can finish an outstanding request after a new
+    // checkout starts. Its cleanup must release only its own reservation.
+    const release = () => {
+      if (this.activeSession === owner) this.activeSession = null
+    }
     try {
-      return open()
+      return open(release)
     } catch (err) {
-      this.sessionActive = false
+      release()
       throw err
     }
   }
@@ -238,6 +248,7 @@ export class SoulPassPayments {
   private paymentSession(
     clientSecret: string,
     authorization: PaymentAuthorizationSession,
+    release: () => void,
     options: BeginPaymentOptions = {},
     /** Freshly created and already validated — skips one retrieve round-trip
      * while the user is watching the checkout popup. Absent for beginPayment(),
@@ -251,15 +262,17 @@ export class SoulPassPayments {
 
     // Every terminal transition releases the client's single-flight slot, so a
     // merchant can start the next checkout the moment this one is over.
+    // A cancelled session's late request still settles here; it must not
+    // relabel the cancellation (confirm() would report SESSION_USED).
     const settle = () => {
-      state = 'settled'
-      this.sessionActive = false
+      if (state === 'confirming') state = 'settled'
+      release()
     }
 
     const cancel = (reason?: string) => {
       if (state === 'settled' || state === 'cancelled') return
       state = 'cancelled'
-      this.sessionActive = false
+      release()
       authorization.cancel(reason ?? 'payment session cancelled')
     }
 
@@ -658,6 +671,9 @@ function assertPreparedPayment(prepared: PreparedPayment): void {
       paymentIntentId: prepared.paymentIntent.id,
     })
   }
+  // The attempt/reference binding is NOT re-derived here, for the same reason
+  // as the fee invariants above: both fields come from one server response.
+  // The popup enforces it against the canonical prepared attempt before signing.
   assertExecution(prepared.execution, prepared.paymentIntent.id)
 }
 

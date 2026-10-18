@@ -255,3 +255,6 @@ export type {
   PopupPaymentSuccessMessage,
   PopupErrorMessage,
 } from './types'
+
+// ── Payment attempt binding (signed into every payment operation) ────────
+export { paymentReferenceFor, paymentMarkerCall, paymentMemoData } from './payment-binding'

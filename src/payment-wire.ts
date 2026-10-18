@@ -108,6 +108,7 @@ export interface SolanaMachineWalletExecution {
   protocol: 'solana_machine_wallet_execute_v1'
   network: string
   account: string
+  paymentReference: string
   mint: string
   recipient: string
   amount: string
@@ -130,6 +131,7 @@ export interface EvmMachineAccountExecution {
   network: string
   chainId: string
   account: string
+  paymentReference: string
   calls: readonly EvmPaymentCall[]
   submissionPath: '/v1/wallet/evm/submit'
 }

@@ -32,8 +32,12 @@ export const TEST_WEBAUTHN_ORIGIN = 'https://test.soulpass.ai';
  * an assertion, so a suffix rule would turn a stale CNAME, a preview deploy
  * or one XSS on a marketing host into a wallet-authorization surface. Only
  * hosts the wallet team controls end to end belong here. (The EVM
- * MachineAccount verifier follows the same split: 1.1.0 on mainnet accepts
- * only the production origin.)
+ * MachineAccount verifier follows the same split on mainnet.)
+ *
+ * This isolates direct WebAuthn signatures only. Production and test share
+ * RP-scoped PRF access, so derived EVM/ed25519 keys are not origin-isolated.
+ * Test must be operated at production trust level; a subdomain compromise
+ * can affect production keys even when its WebAuthn origin is rejected.
  */
 const ALLOWED_ORIGINS: Record<MachineWalletDeployment, readonly string[]> = {
   local: [PRODUCTION_WEBAUTHN_ORIGIN],
