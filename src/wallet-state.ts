@@ -359,7 +359,8 @@ export async function predictNextExecuteNonce(
  * The generation a CreateSession signed against `state` gives the new session:
  * CreateSession consumes only the funds nonce, and the post-increment N is the
  * generation (`N_before + 1`). Session-key transactions (SessionExecute,
- * SelfRevokeSession, CloseSession) and the owner's RevokeSession bind it.
+ * SelfRevokeSession, CloseSession) bind it; the owner's RevokeSession binds
+ * the session's created slot instead.
  */
 export function nextSessionGeneration(state: Pick<MachineWalletState, 'nonce'>): bigint {
   return state.nonce + 1n

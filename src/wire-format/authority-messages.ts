@@ -19,12 +19,14 @@
  * |-------------------|---------------------------------|------------|
  * | `fundsNonce`      | funds `nonce` (N)               | Execute, ExecuteEphemeral, AdvanceNonce, OwnerCloseSession, CreateSession (+ `sessionNonce`) |
  * | `sessionNonce`    | `session_nonce` (S)             | BumpEpoch; CreateSession's first operand (then `priorGeneration`) |
- * | `generation`      | target session's generation     | RevokeSession |
- * | `governanceNonce` | `governance_nonce` (G)          | RotateRoot, Propose/Cancel/ExecuteRecovery, AddAuthority approval and PoP, RemoveSelf/Other, SetThreshold, SetRecoveryThreshold, CloseWallet |
+ * | `sessionCreatedSlot` | target session's `created_slot` (its incarnation) | RevokeSession |
+ * | `etaSlot`         | pending proposal's `recovery_eta` | CancelRecovery |
+ * | `governanceNonce` | `governance_nonce` (G)          | RotateRoot, Propose/ExecuteRecovery, AddAuthority approval and PoP, RemoveSelf/Other, SetThreshold, SetRecoveryThreshold, CloseWallet |
  *
  * CreateSession consumes only N; the new session's generation is N + 1
  * ({@link import('../wallet-state').nextSessionGeneration}). RevokeSession and
- * ProposeRecovery consume nothing.
+ * ProposeRecovery consume nothing; CancelRecovery consumes G but binds the
+ * proposal it vetoes instead.
  */
 
 import type { PublicKey } from '@solana/web3.js';
@@ -116,9 +118,13 @@ export interface GovernanceNonceBound extends WalletMessageScope {
   governanceNonce: bigint;
 }
 
-/** Binds the target session's generation (`SessionState.generation`) in the counter position. */
-export interface SessionGenerationBound extends WalletMessageScope {
-  generation: bigint;
+/**
+ * Binds the target session's incarnation (`SessionState.createdSlot`) in the
+ * counter position. A renewal changes the session's generation but keeps its
+ * created slot, so a revoke signed before a renewal still lands after it.
+ */
+export interface SessionIncarnationBound extends WalletMessageScope {
+  sessionCreatedSlot: bigint;
 }
 
 /**
@@ -214,18 +220,19 @@ export function computeCreateSessionMessage(
 }
 
 /**
- * RevokeSession (owner path): preamble with the target session's generation in
- * the counter position `|| session_authority(32)`. Consumes no counter and
- * leaves the wallet read-only, so revocations can be pre-signed and run in
- * parallel; the proof dies with the session incarnation it names.
+ * RevokeSession (owner path): preamble with the target session's
+ * `created_slot` in the counter position `|| session_authority(32)`. Consumes
+ * no counter and leaves the wallet read-only, so revocations can be
+ * pre-signed and run in parallel; the proof survives renewals and dies with
+ * the session incarnation it names.
  */
 export function computeRevokeSessionMessage(
-  args: SessionGenerationBound & { sessionAuthority: Uint8Array },
+  args: SessionIncarnationBound & { sessionAuthority: Uint8Array },
 ): Uint8Array {
   return hashWalletOp(
     REVOKE_SESSION_TAG,
     args,
-    args.generation,
+    args.sessionCreatedSlot,
     requireLength(args.sessionAuthority, 32, 'sessionAuthority'),
   );
 }
@@ -379,9 +386,16 @@ export function computeExecuteRecoveryMessage(
   return hashWalletOp(EXECUTE_RECOVERY_TAG, args, args.governanceNonce, ...keyOperand(args));
 }
 
-/** CancelRecovery (root-signed veto): the bare preamble. */
-export function computeCancelRecoveryMessage(args: GovernanceNonceBound): Uint8Array {
-  return hashWalletOp(CANCEL_RECOVERY_TAG, args, args.governanceNonce);
+/**
+ * CancelRecovery (root-signed veto): the pending proposal's eta in the counter
+ * position `|| sig_scheme(1) || pubkey(33)` of its target root — read both from
+ * the wallet (`recoveryEta`, `pendingRoot`). Binds no counter: AdvanceNonce
+ * (threshold only) could otherwise starve the root's veto.
+ */
+export function computeCancelRecoveryMessage(
+  args: WalletMessageScope & { etaSlot: bigint } & AuthorityKeyOperand,
+): Uint8Array {
+  return hashWalletOp(CANCEL_RECOVERY_TAG, args, args.etaSlot, ...keyOperand(args));
 }
 
 /**

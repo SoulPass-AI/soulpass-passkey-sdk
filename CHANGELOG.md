@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 — 2026-11-03（machine-wallet f3b7746：撤销与 recovery 否决不再被计数器抢先）
+
+与 machine-wallet `f3b7746` 逐字节对齐（`signed_message_kat.json` 原样重拷，`layout_kat.json` 不变）。
+破坏性变更，未发布基线不保留旧形态。
+
+- **`computeRevokeSessionMessage` 改绑 `sessionCreatedSlot`**（`SessionState.createdSlot`，取代
+  `generation`）：续期改 generation 但不改 created_slot，预签的撤销因此能跨续期落地。
+  `SessionGenerationBound` 换成 `SessionIncarnationBound`。
+- **`computeCancelRecoveryMessage` 改绑待决提案**：计数器位置是 `etaSlot`（钱包的 `recoveryEta`），
+  载荷追加目标 root 的 `sigScheme || pubkey`（`pendingRoot`）；不再绑 G，所以只需门限的
+  AdvanceNonce 无法饿死 root 的否决。
+- KAT：`set_threshold` / `close_wallet` / `set_recovery_threshold` 的 governance nonce 夹具改为 17。
+- 错误 69 现在也覆盖向已有外部 delegate / close authority 的 vault token 账户注资；74 也覆盖
+  列有 vault 的 token multisig 与 ATA `RecoverNested`。
+
 ## 0.5.0 — 2026-10-18（相对 0.4.0 的全部变更）
 
 0.4.0 之后的六次未发布迭代（原 0.5.0 … 0.9.0）统一为这一个版本：它们都没有发 npm、也没有进生产，

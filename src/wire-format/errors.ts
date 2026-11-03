@@ -69,11 +69,20 @@ export const MachineWalletError = {
   DuplicateCashMint: 65,
   InvalidCashCap: 67,
   SessionCreatorDidNotSign: 68,
+  /**
+   * A session handed out authority over a vault token account, or funded one
+   * that already has a foreign delegate or close authority.
+   */
   SessionAuthorityChangeDenied: 69,
   SessionEpochStale: 70,
   NoPendingRecovery: 71,
   RecoveryDelayNotElapsed: 72,
   InvalidRecoveryTarget: 73,
+  /**
+   * A session touched an account through which the vault holds unmetered
+   * authority (a mint, token multisig or durable nonce naming the vault), or
+   * sent an ATA `RecoverNested`.
+   */
   SessionVaultAuthorityDenied: 74,
   SessionSolBudgetMissing: 75,
   /**

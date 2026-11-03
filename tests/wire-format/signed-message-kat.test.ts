@@ -181,7 +181,7 @@ const RECOMPUTE: Record<string, Recompute> = {
   },
   revoke_session: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
-    const base = { ...scope, generation: counter }
+    const base = { ...scope, sessionCreatedSlot: counter }
     const [sessionAuthority] = take(rest, 1)
     return computeRevokeSessionMessage({ ...base, sessionAuthority: sessionAuthority! })
   },
@@ -262,9 +262,13 @@ const RECOMPUTE: Record<string, Recompute> = {
   },
   cancel_recovery: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
-    const base = { ...scope, governanceNonce: counter }
-    take(rest, 0)
-    return computeCancelRecoveryMessage(base)
+    const [scheme, pubkey] = take(rest, 2)
+    return computeCancelRecoveryMessage({
+      ...scope,
+      etaSlot: counter,
+      sigScheme: u8(scheme!),
+      pubkey: pubkey!,
+    })
   },
   bump_epoch: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
@@ -334,7 +338,7 @@ const COUNTER_FIELD: Record<string, string> = {
   execute_ephemeral: 'fundsNonce',
   advance_nonce: 'fundsNonce',
   create_session: 'fundsNonce',
-  revoke_session: 'generation',
+  revoke_session: 'sessionCreatedSlot',
   owner_close_session: 'fundsNonce',
   add_authority: 'governanceNonce',
   add_authority_pop: 'governanceNonce',
@@ -345,14 +349,14 @@ const COUNTER_FIELD: Record<string, string> = {
   rotate_root: 'governanceNonce',
   propose_recovery: 'governanceNonce',
   execute_recovery: 'governanceNonce',
-  cancel_recovery: 'governanceNonce',
+  cancel_recovery: 'etaSlot',
   bump_epoch: 'sessionNonce',
   set_recovery_threshold: 'governanceNonce',
 }
 
 describe('every compute*Message entry point against the contract vectors', () => {
   it('binds the counter the program binds', () => {
-    const field = { fundsNonce: 'nonce_le', sessionNonce: 'session_nonce_le', governanceNonce: 'governance_nonce_le', generation: 'generation_le' } as const
+    const field = { fundsNonce: 'nonce_le', sessionNonce: 'session_nonce_le', governanceNonce: 'governance_nonce_le', sessionCreatedSlot: 'session_created_slot_le', etaSlot: 'eta_slot_le' } as const
     for (const v of fixture.vectors) {
       const stem = v.name.replace(/_(local|devnet|mainnet)$/, '')
       if (stem === 'create_wallet') continue

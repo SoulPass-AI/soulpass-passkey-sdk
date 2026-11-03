@@ -80,7 +80,8 @@ field, no older layout to fall back to:
   with eta 0 is accepted, as on chain). Offsets: `src/wallet-state.ts`.
 - **Session (`'T'`, 0x54)** — a 109-byte header (`generation` @101, the
   post-increment funds nonce of the CreateSession that made it; session-key
-  instructions and the owner's RevokeSession bind it, and a renewing
+  instructions bind it, the owner's RevokeSession binds `created_slot` @66
+  instead (a renewal keeps it), and a renewing
   CreateSession signs it as `priorGeneration`, `0n` for a create), the allowed
   programs, the mandate hash, the creator slot, the rent payer, the 96-byte cash
   budgets (`cashCredit` u64 @88: NET_EXPOSURE proceeds beyond outstanding

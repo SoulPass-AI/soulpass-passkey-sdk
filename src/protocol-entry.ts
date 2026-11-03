@@ -159,7 +159,7 @@ export type {
   FundsNonceBound,
   SessionNonceBound,
   GovernanceNonceBound,
-  SessionGenerationBound,
+  SessionIncarnationBound,
   AuthorityKeyOperand,
   MachineWalletTag,
 } from './wire-format/authority-messages'

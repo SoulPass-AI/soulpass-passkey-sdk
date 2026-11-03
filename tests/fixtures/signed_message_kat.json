@@ -46,9 +46,9 @@
       "name": "revoke_session_local",
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_revoke_session_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "generation_le", "max_slot_le", "session_authority"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1300000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
-      "keccak256_hex": "87a1fc59e9676ddc14e455c9c0d9f29fa9ed81885839478390c93783ef310cc6"
+      "payload_field_names": ["wallet", "creation_slot_le", "session_created_slot_le", "max_slot_le", "session_authority"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "e803000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
+      "keccak256_hex": "85758de9a2b46ab91c98acaea9117e0c99216156ef98c9765477d20c070da655"
     },
     {
       "name": "owner_close_session_local",
@@ -103,16 +103,16 @@
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_set_threshold_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "new_threshold"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
-      "keccak256_hex": "1d37a9aace0bd4cdeb86878578ad1f3e332c60370e23f9ad6e04bd83bdc20dbe"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "4845c9ede980fce830c71ef3c71b364d8aaecedc364d8c407fb2360e2bd6eed0"
     },
     {
       "name": "close_wallet_local",
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_close_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "destination"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
-      "keccak256_hex": "369172bcd51ac1df74345a2a039ee3efe0dbba97a91f4dff3970c731535da9c7"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "b3f1929ce7468a39b2edb84edaa9a71fc1e0fcb11eb9ae456916517c4f5b2b82"
     },
     {
       "name": "propose_recovery_local",
@@ -126,9 +126,9 @@
       "name": "cancel_recovery_local",
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_cancel_recovery_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000"],
-      "keccak256_hex": "6889d2d9407df62f611cd090dc139ce57a75c07d2d4509e050b29e9252591a4a"
+      "payload_field_names": ["wallet", "creation_slot_le", "eta_slot_le", "max_slot_le", "sig_scheme", "pubkey"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "a412170000000000", "90d0030000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "5055f4f19d09a1f13678fc1b12a6b3c4615b6e706708c473618db69b2b73fbd1"
     },
     {
       "name": "bump_epoch_local",
@@ -151,8 +151,8 @@
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_set_recovery_threshold_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "recovery_threshold"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
-      "keccak256_hex": "1077e456578e9c536b8ddbf667cdd2eb16c33fa3a5e2a42a5229e28aa4a95fbb"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "687b839c7b8569ba01cc88d9fa67ecf2943cf952c42a9855c2df7da24bd15d71"
     },
     {
       "name": "execute_devnet",
@@ -198,9 +198,9 @@
       "name": "revoke_session_devnet",
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_revoke_session_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "generation_le", "max_slot_le", "session_authority"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1300000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
-      "keccak256_hex": "90e47260cb53240f1644e8d45163014997c0fc8395cff52b2bd68d2a87b85cc8"
+      "payload_field_names": ["wallet", "creation_slot_le", "session_created_slot_le", "max_slot_le", "session_authority"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "e803000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
+      "keccak256_hex": "9d1fad16508af8780e36eb29febd2cc57f388836499a26965a89e467c7755c23"
     },
     {
       "name": "owner_close_session_devnet",
@@ -255,16 +255,16 @@
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_set_threshold_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "new_threshold"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
-      "keccak256_hex": "45442d8ff5fcb207202df9ab40dd1b2a8dd7c98336970eaff4b6b41133db935c"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "46fa4b19f8f3a09bb8b820102af13df845d7150bcd4fea168870ce29a6926292"
     },
     {
       "name": "close_wallet_devnet",
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_close_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "destination"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
-      "keccak256_hex": "feebc916b4cfcaadc7d37e53525f680fa4658c0dea40e28fdc23243992a25f4e"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "3bb3fe92f36a74e0544582d03496efde6fc25c6f6797954ceda46fa91e677203"
     },
     {
       "name": "propose_recovery_devnet",
@@ -278,9 +278,9 @@
       "name": "cancel_recovery_devnet",
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_cancel_recovery_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000"],
-      "keccak256_hex": "416bc315b3fa7b69c5738f270b9326d9c659c6571c6f3831bf8700c26b0614b5"
+      "payload_field_names": ["wallet", "creation_slot_le", "eta_slot_le", "max_slot_le", "sig_scheme", "pubkey"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "a412170000000000", "90d0030000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "c3e82bcab80ce8c2ea3601c890d9bba2117c089ffb6f3c13b5012c20ae047a58"
     },
     {
       "name": "bump_epoch_devnet",
@@ -303,8 +303,8 @@
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_set_recovery_threshold_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "recovery_threshold"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
-      "keccak256_hex": "ebd292becda1184d60231b63a7750135eb29d3ae349e5f964f4286eb6b279ac8"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "f38fc4adedc98eb82b29302fccd3f14a75ec31e674a71066438fbf980a5de0e1"
     },
     {
       "name": "execute_mainnet",
@@ -350,9 +350,9 @@
       "name": "revoke_session_mainnet",
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_revoke_session_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "generation_le", "max_slot_le", "session_authority"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1300000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
-      "keccak256_hex": "380b716baa90ab95adb8a2c91ba322b2dd0428485054073e39b4778221217d79"
+      "payload_field_names": ["wallet", "creation_slot_le", "session_created_slot_le", "max_slot_le", "session_authority"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "e803000000000000", "90d0030000000000", "4444444444444444444444444444444444444444444444444444444444444444"],
+      "keccak256_hex": "7a47bc4d80d97618b011c42484bece913e1e16e44c1de1531cf4cbf9a03f845d"
     },
     {
       "name": "owner_close_session_mainnet",
@@ -407,16 +407,16 @@
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_set_threshold_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "new_threshold"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
-      "keccak256_hex": "272479f1fb5b3d2f7037dadea1f2fdccbf4b5f37472f300d843104f209be50c7"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "31578fb39a32b1f061dcb6e2987412c4a79a8ef409d85b19d58025d01074460e"
     },
     {
       "name": "close_wallet_mainnet",
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_close_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "destination"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
-      "keccak256_hex": "4a748d91fe4f5e5184faba3324bd8652e9eabb1288a4d103b80720801d786370"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "1335131c78a365ed699e664170e767aca2a28742a7cf201f6fb29f3ae3d457c3"
     },
     {
       "name": "propose_recovery_mainnet",
@@ -430,9 +430,9 @@
       "name": "cancel_recovery_mainnet",
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_cancel_recovery_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000"],
-      "keccak256_hex": "db41fdc6a921ce407c81cc4e8c313b59969f4fbe9c3d6a4cd9d6aee6467cf79b"
+      "payload_field_names": ["wallet", "creation_slot_le", "eta_slot_le", "max_slot_le", "sig_scheme", "pubkey"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "a412170000000000", "90d0030000000000", "00", "024242424242424242424242424242424242424242424242424242424242424242"],
+      "keccak256_hex": "a8cbdd32ec22233cd4253341ebb5aa624ea36bcc57077ca041499b2a5e51ad22"
     },
     {
       "name": "bump_epoch_mainnet",
@@ -455,8 +455,8 @@
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_set_recovery_threshold_v1",
       "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "recovery_threshold"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02"],
-      "keccak256_hex": "f27f6905b8d552739028f0f087aa9df2f26e20f8a635cc62ea6b31f499ce313a"
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "02"],
+      "keccak256_hex": "3602d0f51890e8ba2a93a9a056830491fddd9abb86dcb6a869238fc82765088d"
     }
   ]
 }
