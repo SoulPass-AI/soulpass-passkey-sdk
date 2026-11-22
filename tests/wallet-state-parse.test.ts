@@ -10,7 +10,6 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { Keypair } from '@solana/web3.js'
 import { hexToBytes } from '@noble/hashes/utils'
 import {
   walletAccountSize,
@@ -23,8 +22,6 @@ import {
   type MachineWalletState,
   type WalletAuthoritySlot,
 } from '../src/wallet-state'
-import { deriveVaultPDA } from '../src/adapters/solana'
-import { asStatePdaKey } from '../src/types'
 
 const OFF = {
   TAG: 0,
@@ -34,16 +31,14 @@ const OFF = {
   AUTHORITY_COUNT: 35,
   NONCE: 36,
   CREATION_SLOT: 44,
-  VAULT_BUMP: 52,
-  ROOT: 53,
-  AUTHORITY_EPOCH: 87,
-  PENDING_ROOT: 95,
-  RECOVERY_ETA: 129,
-  VAULT: 137,
-  RECOVERY_THRESHOLD: 169,
-  SESSION_NONCE: 170,
-  GOVERNANCE_NONCE: 178,
-  AUTHORITIES: 186,
+  ROOT: 52,
+  AUTHORITY_EPOCH: 86,
+  PENDING_ROOT: 94,
+  RECOVERY_ETA: 128,
+  RECOVERY_THRESHOLD: 136,
+  SESSION_NONCE: 137,
+  GOVERNANCE_NONCE: 145,
+  AUTHORITIES: 153,
 } as const
 const SLOT = 34
 
@@ -66,8 +61,7 @@ function writeSlot(buf: Uint8Array, off: number, slot: { sigScheme: number; pubk
 }
 
 /**
- * A program-shaped 'W' account: 186-byte header + one slot per authority,
- * with `vault` derived from a real wallet PDA and `vault_bump`.
+ * A program-shaped 'W' account: 153-byte header + one slot per authority.
  */
 function makeAccount(opts: {
   authorities?: WalletAuthoritySlot[]
@@ -80,23 +74,10 @@ function makeAccount(opts: {
   authorityEpoch?: bigint
   pending?: { slot: WalletAuthoritySlot; eta: bigint }
   recoveryThreshold?: number
-} = {}): { data: Uint8Array; vault: Uint8Array; walletPda: Uint8Array } {
+} = {}): { data: Uint8Array } {
   const authorities = opts.authorities ?? [PASSKEY]
   const n = authorities.length
-  const buf = new Uint8Array(186 + n * SLOT)
-  const walletPda = Keypair.generate().publicKey
-  const vaultBump = 255
-  let vault: Uint8Array | undefined
-  // Walk bumps down until the vault seeds land off-curve, as the program's
-  // find_program_address did at creation.
-  for (let b = vaultBump; vault === undefined; b--) {
-    try {
-      vault = deriveVaultPDA(asStatePdaKey(walletPda), b).toBytes()
-      buf[OFF.VAULT_BUMP] = b
-    } catch {
-      /* on-curve: next bump */
-    }
-  }
+  const buf = new Uint8Array(153 + n * SLOT)
   buf[OFF.TAG] = 0x57
   buf[OFF.BUMP] = 254
   buf.fill(0x42, OFF.WALLET_ID, OFF.WALLET_ID + 32)
@@ -115,15 +96,14 @@ function makeAccount(opts: {
   } else {
     buf[OFF.PENDING_ROOT] = 0xff
   }
-  buf.set(vault, OFF.VAULT)
   buf[OFF.RECOVERY_THRESHOLD] = opts.recoveryThreshold ?? 0
   authorities.forEach((a, i) => writeSlot(buf, OFF.AUTHORITIES + i * SLOT, a))
-  return { data: buf, vault, walletPda: walletPda.toBytes() }
+  return { data: buf }
 }
 
 describe('parseWalletState', () => {
-  it('decodes a well-formed single-authority account, vault included', () => {
-    const { data, vault } = makeAccount({
+  it('decodes a well-formed single-authority account', () => {
+    const { data } = makeAccount({
       // Distinct N, S, G: a counter read from the wrong offset fails.
       nonce: 0x0123456789abcdefn,
       sessionNonce: 0x1111_2222_3333_4444n,
@@ -144,20 +124,19 @@ describe('parseWalletState', () => {
     expect(s.authorityEpoch).toBe(9n)
     expect(s.pendingRoot).toBeNull()
     expect(s.recoveryEta).toBe(0n)
-    expect(s.vault).toEqual(vault)
     expect(s.recoveryThreshold).toBe(0)
     expect(s.authorities).toEqual([PASSKEY])
     expect(s.root).toEqual(PASSKEY)
   })
 
-  it('walletAccountSize is 186 + 34n', () => {
-    expect(walletAccountSize(1)).toBe(220)
-    expect(walletAccountSize(2)).toBe(254)
-    expect(walletAccountSize(16)).toBe(730)
+  it('walletAccountSize is 153 + 34n', () => {
+    expect(walletAccountSize(1)).toBe(187)
+    expect(walletAccountSize(2)).toBe(221)
+    expect(walletAccountSize(16)).toBe(697)
   })
 
   it('rejects a body shorter than the header', () => {
-    expect(() => parseWalletState(new Uint8Array(169))).toThrow(/too small/i)
+    expect(() => parseWalletState(new Uint8Array(152))).toThrow(/too small/i)
   })
 
   it('rejects threshold 0, threshold > count, count 0 and count > 16', () => {
@@ -236,7 +215,6 @@ describe('parseWalletState', () => {
     data.fill(0)
     expect(s.authorities[0].pubkey).toEqual(P256_KEY)
     expect(s.root.pubkey).toEqual(P256_KEY)
-    expect(s.vault.some((b) => b !== 0)).toBe(true)
   })
 
   it('projects each slot onto its verifier form via effectiveAuthorityKey', () => {
@@ -299,8 +277,8 @@ describe('parseWalletState — layout KAT (program bytes)', () => {
   it(`decodes ${WALLET_KAT} field-for-field`, () => {
     const v = kat(WALLET_KAT)
     const data = hexToBytes(v.bytes_hex)
-    expect(data).toHaveLength(254)
-    expect(walletAccountSize(2)).toBe(254)
+    expect(data).toHaveLength(221)
+    expect(walletAccountSize(2)).toBe(221)
 
     const s = parseWalletState(data)
     expect(s.bump).toBe(0xfe)
@@ -313,13 +291,11 @@ describe('parseWalletState — layout KAT (program bytes)', () => {
     // The program's vector uses distinct counters, so a swapped offset cannot pass.
     expect(new Set([s.nonce, s.sessionNonce, s.governanceNonce]).size).toBe(3)
     expect(s.creationSlot).toBe(u64Field(v, 'creation_slot_le'))
-    expect(s.vaultBump).toBe(0xfd)
     expect(s.authorityEpoch).toBe(3n)
     expect(s.pendingRoot).not.toBeNull()
     expect(s.pendingRoot).toEqual(slotField(v, 'pending_root'))
     expect(s.recoveryEta).toBe(u64Field(v, 'recovery_eta_le'))
     expect(s.recoveryEta).toBeGreaterThan(0n)
-    expect(s.vault).toEqual(katField(v, 'vault'))
     expect(s.recoveryThreshold).toBe(katField(v, 'recovery_threshold')[0])
     expect(s.authorities).toEqual([slotField(v, 'authority_0'), slotField(v, 'authority_1')])
 

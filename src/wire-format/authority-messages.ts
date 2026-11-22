@@ -30,7 +30,7 @@
  */
 
 import type { PublicKey } from '@solana/web3.js';
-import { requireByte, requireLength, u64LE } from './_bytes';
+import { requireByte, requireLength, requireU16, u64LE } from './_bytes';
 import { hashSignedMessage, type MachineWalletDeployment } from './signed-message';
 
 const encoder = new TextEncoder();
@@ -181,11 +181,17 @@ export function computeCreateWalletMessage(args: {
   });
 }
 
-/** CloseWallet: preamble `|| destination(32)`. */
+/** CloseWallet: preamble `|| vault_index(u16 LE) || destination(32)`; drains that vault only. */
 export function computeCloseWalletMessage(
-  args: GovernanceNonceBound & { destination: Uint8Array },
+  args: GovernanceNonceBound & { vaultIndex: number; destination: Uint8Array },
 ): Uint8Array {
-  return hashWalletOp(CLOSE_WALLET_TAG, args, args.governanceNonce, requireLength(args.destination, 32, 'destination'));
+  return hashWalletOp(
+    CLOSE_WALLET_TAG,
+    args,
+    args.governanceNonce,
+    requireU16(args.vaultIndex, 'vaultIndex'),
+    requireLength(args.destination, 32, 'destination'),
+  );
 }
 
 /** AdvanceNonce: the bare preamble. */

@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest'
 import { PublicKey } from '@solana/web3.js'
 import { SoulPassWalletAdapter, deriveVaultPDA } from '../../src/adapters/solana'
 import { asStatePdaKey } from '../../src/types'
+import { MAIN_VAULT_INDEX } from '../../src/wire-format/constants'
+import { deriveVaultPda } from '../../src/wire-format/pda'
 
 describe('SoulPassWalletAdapter', () => {
   it('has correct adapter metadata', () => {
@@ -24,15 +26,12 @@ describe('SoulPassWalletAdapter', () => {
 })
 
 describe('deriveVaultPDA', () => {
-  it('derives the machine_vault PDA with the cached bump as the last seed (golden vector)', () => {
-    const walletPDA = asStatePdaKey(new PublicKey('SouLi11jcPZGRS1yBfJDxcrDAWHNvJeSwph8pxZWzYw'))
-    const vault = deriveVaultPDA(walletPDA, 254)
-    expect(vault.toBase58()).toBe('Aeb61U3d3NpsQmt5UgxiJUXaXaUR8imbmsw5Z5imjj46')
-  })
-
-  it('throws rather than searching when the bump yields an on-curve point', () => {
-    const walletPDA = asStatePdaKey(new PublicKey('SouLi11jcPZGRS1yBfJDxcrDAWHNvJeSwph8pxZWzYw'))
-    expect(() => deriveVaultPDA(walletPDA, 252)).toThrow()
+  it('brands deriveVaultPda(wallet, index).address', () => {
+    const walletPDA = asStatePdaKey(new PublicKey(new Uint8Array(32).fill(0x21)))
+    for (const index of [MAIN_VAULT_INDEX, 3]) {
+      expect(deriveVaultPDA(walletPDA, index).equals(deriveVaultPda(walletPDA, index).address)).toBe(true)
+    }
+    expect(deriveVaultPDA(walletPDA, 0).equals(deriveVaultPDA(walletPDA, 1))).toBe(false)
   })
 })
 

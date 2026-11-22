@@ -25,10 +25,7 @@ import type {
   VaultPdaKey,
 } from '../types'
 import { asStatePdaKey, asVaultPdaKey } from '../types'
-import { VAULT_SEED } from '../wire-format/constants'
-import { MACHINE_WALLET_PROGRAM_ID } from '../wire-format/pda'
-
-const MACHINE_VAULT_SEED_BYTES = new TextEncoder().encode(VAULT_SEED)
+import { deriveVaultPda } from '../wire-format/pda'
 
 // --- Trust-boundary validators ---
 //
@@ -37,26 +34,11 @@ const MACHINE_VAULT_SEED_BYTES = new TextEncoder().encode(VAULT_SEED)
 // gets the brand.
 export { validateVaultPda, validateStatePda } from '../types'
 
-/** Derive the system-owned vault PDA from the wallet PDA and its cached bump.
- *
- * MUST use `createProgramAddressSync` (not `findProgramAddressSync`): the
- * on-chain program (`processor/execute.rs::verify_vault_pda`) calls
- * `Pubkey::create_program_address([seed, walletPDA, [vault_bump]], program_id)`
- * — i.e. it uses the cached bump as the LAST seed byte and never searches.
- *
- * `findProgramAddressSync` instead treats the input seeds as fixed and
- * appends a *search* bump byte until it finds an off-curve point, producing
- * a different 4-seed PDA. The on-chain check then rejects it with
- * `InvalidVaultPDA` (custom error 7). Mirrors matrix-contract's
- * `SolanaMachineWalletService` derivation for consistency.
+/** Vault `vaultIndex` of a wallet PDA, branded ({@link deriveVaultPda} at the
+ * canonical bump). Pass `MAIN_VAULT_INDEX` (0) for the owner's main account.
  */
-export function deriveVaultPDA(walletPDA: StatePdaKey, vaultBump: number): VaultPdaKey {
-  return asVaultPdaKey(
-    PublicKey.createProgramAddressSync(
-      [MACHINE_VAULT_SEED_BYTES, walletPDA.toBytes(), new Uint8Array([vaultBump])],
-      MACHINE_WALLET_PROGRAM_ID,
-    ),
-  )
+export function deriveVaultPDA(walletPDA: StatePdaKey, vaultIndex: number): VaultPdaKey {
+  return asVaultPdaKey(deriveVaultPda(walletPDA, vaultIndex).address)
 }
 
 export const SoulPassWalletName = 'SoulPass' as WalletName<'SoulPass'>

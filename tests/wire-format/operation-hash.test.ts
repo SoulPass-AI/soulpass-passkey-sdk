@@ -29,6 +29,7 @@ describe('computeExecuteMessage', () => {
       creationSlot: 100n,
       fundsNonce: 5n,
       maxSlot: 200n,
+      vaultIndex: 0,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     }
@@ -44,6 +45,7 @@ describe('computeExecuteMessage', () => {
       creationSlot: 100n,
       fundsNonce: 5n,
       maxSlot: 200n,
+      vaultIndex: 0,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     }
@@ -51,6 +53,7 @@ describe('computeExecuteMessage', () => {
     expect(computeExecuteMessage({ ...base, creationSlot: 101n })).not.toEqual(a)
     expect(computeExecuteMessage({ ...base, fundsNonce: 6n })).not.toEqual(a)
     expect(computeExecuteMessage({ ...base, maxSlot: 201n })).not.toEqual(a)
+    expect(computeExecuteMessage({ ...base, vaultIndex: 1 })).not.toEqual(a)
     const otherInner = new Uint8Array(32).fill(0xbb)
     expect(computeExecuteMessage({ ...base, innerHash: otherInner })).not.toEqual(a)
     const otherWallet = Keypair.generate().publicKey
@@ -66,10 +69,27 @@ describe('computeExecuteMessage', () => {
         creationSlot: 0n,
         fundsNonce: 0n,
         maxSlot: 0n,
+        vaultIndex: 0,
         innerHash: new Uint8Array(31),
         deployment: DEPLOYMENT,
       }),
     ).toThrow(/32 bytes/)
+  })
+
+  it('rejects a vaultIndex outside u16', () => {
+    for (const vaultIndex of [-1, 0x10000]) {
+      expect(() =>
+        computeExecuteMessage({
+          walletPDA,
+          creationSlot: 0n,
+          fundsNonce: 0n,
+          maxSlot: 0n,
+          vaultIndex,
+          innerHash: VALID_INNER_HASH,
+          deployment: DEPLOYMENT,
+        }),
+      ).toThrow(/vaultIndex must be a u16/)
+    }
   })
 
   it('instruction tag is exactly the on-chain tag', () => {
@@ -84,6 +104,7 @@ describe('computeExecuteEphemeralMessage', () => {
       creationSlot: 100n,
       fundsNonce: 5n,
       maxSlot: 200n,
+      vaultIndex: 0,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     }
@@ -97,6 +118,7 @@ describe('computeExecuteEphemeralMessage', () => {
     })
     expect(a.length).toBe(32)
     expect(a).not.toEqual(b)
+    expect(computeExecuteEphemeralMessage({ ...base, vaultIndex: 1, ephemeralSignerBumps: Uint8Array.of(255) })).not.toEqual(a)
   })
 
   it('the two execute paths with identical operands produce different hashes', () => {
@@ -107,6 +129,7 @@ describe('computeExecuteEphemeralMessage', () => {
       creationSlot: 100n,
       fundsNonce: 5n,
       maxSlot: 200n,
+      vaultIndex: 0,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     })
@@ -115,6 +138,7 @@ describe('computeExecuteEphemeralMessage', () => {
       creationSlot: 100n,
       fundsNonce: 5n,
       maxSlot: 200n,
+      vaultIndex: 0,
       ephemeralSignerBumps: Uint8Array.of(255),
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
@@ -128,6 +152,7 @@ describe('computeExecuteEphemeralMessage', () => {
       creationSlot: 0n,
       fundsNonce: 0n,
       maxSlot: 0n,
+      vaultIndex: 0,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     }
@@ -142,6 +167,7 @@ describe('computeExecuteEphemeralMessage', () => {
       creationSlot: 0n,
       fundsNonce: 0n,
       maxSlot: 0n,
+      vaultIndex: 0,
       innerHash: VALID_INNER_HASH,
       deployment: DEPLOYMENT,
     }
@@ -157,6 +183,7 @@ describe('computeExecuteEphemeralMessage', () => {
         creationSlot: 0n,
         fundsNonce: 0n,
         maxSlot: 0n,
+        vaultIndex: 0,
         ephemeralSignerBumps: Uint8Array.of(255),
         innerHash: new Uint8Array(33),
         deployment: DEPLOYMENT,

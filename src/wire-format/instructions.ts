@@ -14,7 +14,7 @@
  * reads (`(w)` writable, `(s)` signer).
  */
 
-import { concatBytes, requireByte, requireLength, u64LE } from './_bytes';
+import { concatBytes, requireByte, requireLength, requireU16, u64LE } from './_bytes';
 import { MachineWalletDisc } from './disc';
 import { encodeInnerInstructions, type RemainingAccount } from './execute-ix';
 import type { InnerInstruction } from './inner-hash';
@@ -95,20 +95,20 @@ export const OWNER_CLOSE_SESSION_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'session (w)'
 export const CLOSE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)', 'destination (w) = rent_payer'] as const;
 /** SelfRevokeSession (7), `self_revoke_session.rs`; signed by the session key. */
 export const SELF_REVOKE_SESSION_ACCOUNTS = ['session (w)', 'authority (s)'] as const;
-/** CloseWallet (2), `close_wallet.rs`. */
+/** CloseWallet (2), `close_wallet.rs`: `vault` is vault `vaultIndex` of the ix data. */
 export const CLOSE_WALLET_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'vault (w)', 'destination (w)', 'system_program'] as const;
 /** CreateWallet (0), `create_wallet.rs`. */
 export const CREATE_WALLET_ACCOUNTS = ['instructions_sysvar', 'payer (s)', 'wallet (w)', 'system_program'] as const;
 /**
- * Execute (1) and ExecuteWithEphemeralSigners (16), `execute.rs`: the
- * de-duplicated remaining accounts (`encodeRemainingAccounts`) follow, in the
+ * Execute (1) and ExecuteWithEphemeralSigners (16), `execute.rs`: `vault` is
+ * vault `vaultIndex` of the ix data; the de-duplicated remaining accounts (`encodeRemainingAccounts`) follow, in the
  * order their `index` bytes name them.
  */
 export const EXECUTE_ACCOUNTS = [...GOVERNED_ACCOUNTS, 'vault (w)', '…remaining'] as const;
 /**
  * SessionExecute (5), `session_execute.rs`: `authority` is the session key;
- * the wallet is read-only; the de-duplicated remaining accounts
- * (`encodeRemainingAccounts`) follow.
+ * the wallet is read-only; `vault` must be vault `SessionState.vaultIndex`;
+ * the de-duplicated remaining accounts (`encodeRemainingAccounts`) follow.
  */
 export const SESSION_EXECUTE_ACCOUNTS = ['session (w)', 'wallet', 'authority (s)', 'vault (w)', '…remaining'] as const;
 
@@ -124,11 +124,15 @@ export function buildCreateWalletIxData(args: {
   return maxSlotKey(MachineWalletDisc.CreateWallet, args.maxSlot, args.sigScheme, args.authority, 'authority');
 }
 
-/** CloseWallet (2): `[2] || max_slot || destination(32)` — 41 B. */
-export function buildCloseWalletIxData(args: { maxSlot: bigint; destination: Uint8Array }): Uint8Array {
+/**
+ * CloseWallet (2): `[2] || max_slot || vault_index(u16 LE) || destination(32)`
+ * — 43 B. Drains vault `vaultIndex` only (account 3 must be that vault).
+ */
+export function buildCloseWalletIxData(args: { maxSlot: bigint; vaultIndex: number; destination: Uint8Array }): Uint8Array {
   return concatBytes([
     disc(MachineWalletDisc.CloseWallet),
     u64LE(args.maxSlot),
+    requireU16(args.vaultIndex, 'vaultIndex'),
     requireLength(args.destination, 32, 'destination'),
   ]);
 }

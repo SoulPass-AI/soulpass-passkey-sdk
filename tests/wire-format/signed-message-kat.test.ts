@@ -98,6 +98,10 @@ const u64 = (b: Uint8Array): bigint => {
   expect(b).toHaveLength(8)
   return new DataView(b.buffer, b.byteOffset, 8).getBigUint64(0, true)
 }
+const u16 = (b: Uint8Array): number => {
+  expect(b).toHaveLength(2)
+  return new DataView(b.buffer, b.byteOffset).getUint16(0, true)
+}
 const u8 = (b: Uint8Array): number => {
   expect(b).toHaveLength(1)
   return b[0]!
@@ -148,16 +152,17 @@ const RECOMPUTE: Record<string, Recompute> = {
   execute: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
     const base = { ...scope, fundsNonce: counter }
-    const [innerHash] = take(rest, 1)
-    return computeExecuteMessage({ ...base, innerHash: innerHash! })
+    const [vaultIndex, innerHash] = take(rest, 2)
+    return computeExecuteMessage({ ...base, vaultIndex: u16(vaultIndex!), innerHash: innerHash! })
   },
   execute_ephemeral: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
     const base = { ...scope, fundsNonce: counter }
-    const [count, bumps, innerHash] = take(rest, 3)
+    const [vaultIndex, count, bumps, innerHash] = take(rest, 4)
     expect(u8(count!)).toBe(bumps!.length)
     return computeExecuteEphemeralMessage({
       ...base,
+      vaultIndex: u16(vaultIndex!),
       ephemeralSignerBumps: bumps!,
       innerHash: innerHash!,
     })
@@ -239,8 +244,8 @@ const RECOMPUTE: Record<string, Recompute> = {
   close_wallet: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
     const base = { ...scope, governanceNonce: counter }
-    const [destination] = take(rest, 1)
-    return computeCloseWalletMessage({ ...base, destination: destination! })
+    const [vaultIndex, destination] = take(rest, 2)
+    return computeCloseWalletMessage({ ...base, vaultIndex: u16(vaultIndex!), destination: destination! })
   },
   rotate_root: (parts, d) => {
     const { scope, counter, rest } = prefix(parts, d)
@@ -455,7 +460,7 @@ describe('authority message guards', () => {
   })
 
   it('rejects operands of the wrong width instead of hashing them', () => {
-    expect(() => computeCloseWalletMessage({ ...base, destination: new Uint8Array(31) })).toThrow(
+    expect(() => computeCloseWalletMessage({ ...base, vaultIndex: 0, destination: new Uint8Array(31) })).toThrow(
       RangeError,
     )
     expect(() =>

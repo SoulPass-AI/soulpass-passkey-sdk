@@ -42,6 +42,7 @@ export {
   SLEEVE_ENTRY_SIZE,
   WALLET_SEED,
   VAULT_SEED,
+  MAIN_VAULT_INDEX,
   SESSION_SEED,
 } from './wire-format/constants'
 
@@ -54,7 +55,7 @@ export {
 export type { MachineWalletErrorName, MachineWalletErrorCode } from './wire-format/errors'
 
 // ── PDA derivation ───────────────────────────────────────────────────────
-export { deriveWalletPda, deriveSessionPda } from './wire-format/pda'
+export { deriveWalletPda, deriveVaultPda, deriveSessionPda } from './wire-format/pda'
 export type { ProgramAddress } from './wire-format/pda'
 
 // ── Ephemeral signer PDA derivation (Squads-v4 model) ────────────────────

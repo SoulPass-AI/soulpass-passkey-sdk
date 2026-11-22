@@ -12,7 +12,7 @@ import { MAX_CLIENT_DATA_JSON_SIZE, MAX_INNER_INSTRUCTIONS } from './constants';
 import { encodeEphemeralBumps } from './operation-hash';
 import type { InnerInstruction } from './inner-hash';
 import { accountFlags } from './inner-hash';
-import { u16LE, u32LE, u64LE, concatBytes } from './_bytes';
+import { u16LE, u32LE, u64LE, concatBytes, requireU16 } from './_bytes';
 import { PublicKey } from '@solana/web3.js';
 
 /**
@@ -50,10 +50,11 @@ export function buildEvidenceIxData(clientDataJSON: Uint8Array): Uint8Array {
  * Layouts (mirrors `instruction.rs::Execute::deserialize` and `::ExecuteWithEphemeralSigners::deserialize`):
  *
  *   disc=1:
- *     [tag(1)=1] [max_slot u64 LE] [inner_count u32 LE] [encoded inner ixs...]
+ *     [tag(1)=1] [max_slot u64 LE] [vault_index u16 LE]
+ *     [inner_count u32 LE] [encoded inner ixs...]
  *
  *   disc=16:
- *     [tag(1)=16] [max_slot u64 LE]
+ *     [tag(1)=16] [max_slot u64 LE] [vault_index u16 LE]
  *     [num_ephemeral u8] [bumps(num_ephemeral bytes)]
  *     [inner_count u32 LE] [encoded inner ixs...]
  *
@@ -73,6 +74,12 @@ export function buildEvidenceIxData(clientDataJSON: Uint8Array): Uint8Array {
  */
 export function buildExecuteIxData(args: {
   maxSlot: bigint;
+  /**
+   * The vault that signs the inner instructions (u16; `MAIN_VAULT_INDEX` for
+   * the main account). Account 3 of the ix must be `deriveVaultPda(wallet,
+   * vaultIndex)`, and the same index must have fed the signed message.
+   */
+  vaultIndex: number;
   innerInstructions: ReadonlyArray<InnerInstruction>;
   /**
    * De-duplicated remaining-accounts list produced by
@@ -87,13 +94,15 @@ export function buildExecuteIxData(args: {
    */
   ephemeralSignerBumps?: Uint8Array;
 }): Uint8Array {
-  const { maxSlot, innerInstructions, remainingAccounts, ephemeralSignerBumps } = args;
+  const { maxSlot, vaultIndex, innerInstructions, remainingAccounts, ephemeralSignerBumps } = args;
+  const vault = requireU16(vaultIndex, 'vaultIndex');
   const head =
     ephemeralSignerBumps === undefined
-      ? [Uint8Array.of(MachineWalletDisc.Execute), u64LE(maxSlot)]
+      ? [Uint8Array.of(MachineWalletDisc.Execute), u64LE(maxSlot), vault]
       : [
           Uint8Array.of(MachineWalletDisc.ExecuteWithEphemeralSigners),
           u64LE(maxSlot),
+          vault,
           encodeEphemeralBumps(ephemeralSignerBumps),
         ];
   return concatBytes([...head, encodeInnerInstructions(innerInstructions, remainingAccounts)]);

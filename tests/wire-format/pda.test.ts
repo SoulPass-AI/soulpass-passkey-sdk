@@ -7,8 +7,8 @@ import { describe, it, expect } from 'vitest'
 import { PublicKey } from '@solana/web3.js'
 import { keccak_256 } from '@noble/hashes/sha3'
 import { hexToBytes } from '@noble/hashes/utils'
-import { deriveWalletPda, deriveSessionPda } from '../../src/wire-format/pda'
-import { SESSION_SEED, WALLET_SEED } from '../../src/wire-format/constants'
+import { deriveWalletPda, deriveVaultPda, deriveSessionPda } from '../../src/wire-format/pda'
+import { MAIN_VAULT_INDEX, SESSION_SEED, VAULT_SEED, WALLET_SEED } from '../../src/wire-format/constants'
 import { MACHINE_WALLET_PROGRAM_ADDRESS } from '../../src/protocol'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -79,6 +79,40 @@ describe('deriveWalletPda', () => {
 
   it('rejects an authority that is not 33 bytes', () => {
     expect(() => deriveWalletPda(new Uint8Array(32))).toThrow(RangeError)
+  })
+})
+
+describe('deriveVaultPda', () => {
+  it('KAT vault_pda_index_3 matches the program (canonical bump over [VAULT_SEED, wallet, u16 LE index])', () => {
+    const wallet = new PublicKey(katField('vault_pda_index_3', 'wallet'))
+    expect(katField('vault_pda_index_3', 'vault_index_le')).toEqual(new Uint8Array([3, 0]))
+    const { address, bump } = deriveVaultPda(wallet, 3)
+    expect(address.toBytes()).toEqual(katField('vault_pda_index_3', 'vault'))
+    const [expected, expectedBump] = PublicKey.findProgramAddressSync(
+      [enc.encode(VAULT_SEED), wallet.toBytes(), new Uint8Array([3, 0])],
+      PROGRAM_ID,
+    )
+    expect(address.equals(expected)).toBe(true)
+    expect(bump).toBe(expectedBump)
+  })
+
+  it('every index is a distinct vault; index 0 is the main account', () => {
+    const wallet = deriveWalletPda(AUTHORITY33).address
+    const main = deriveVaultPda(wallet, MAIN_VAULT_INDEX).address
+    const [expected] = PublicKey.findProgramAddressSync(
+      [enc.encode(VAULT_SEED), wallet.toBytes(), new Uint8Array([0, 0])],
+      PROGRAM_ID,
+    )
+    expect(main.equals(expected)).toBe(true)
+    expect(main.equals(deriveVaultPda(wallet, 1).address)).toBe(false)
+    expect(main.equals(deriveVaultPda(wallet, 0xffff).address)).toBe(false)
+  })
+
+  it('rejects an index outside u16', () => {
+    const wallet = deriveWalletPda(AUTHORITY33).address
+    for (const bad of [-1, 0x10000, 1.5]) {
+      expect(() => deriveVaultPda(wallet, bad)).toThrow(/vaultIndex must be a u16/)
+    }
   })
 })
 

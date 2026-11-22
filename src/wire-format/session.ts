@@ -13,7 +13,7 @@
  */
 
 import { keccak_256 } from '@noble/hashes/sha3';
-import { bytesEqual, concatBytes, isAllZero, requireByte, requireLength, u64LE } from './_bytes';
+import { bytesEqual, concatBytes, isAllZero, requireByte, requireLength, requireU16, u16LE, u64LE } from './_bytes';
 import { MAX_ALLOWED_PROGRAMS, MAX_CASH_MINTS, SESSION_FLAGS_KNOWN, isNativeSolMint } from './constants';
 import { MachineWalletDisc } from './disc';
 import type { MachineWalletErrorName } from './errors';
@@ -54,6 +54,12 @@ export interface SessionParams {
   /** 32-byte session key (the Ed25519 key that will sign SessionExecute). */
   sessionAuthority: Uint8Array;
   expirySlot: bigint;
+  /**
+   * The one wallet vault (u16) the session may move; `MAIN_VAULT_INDEX` for
+   * the main account. Fixed for the session's life: a renewal naming another
+   * index fails with `InvalidSessionData`.
+   */
+  vaultIndex: number;
   /** 1..=8 distinct program ids, 32 bytes each. */
   allowedPrograms: ReadonlyArray<Uint8Array>;
   /** 32-byte hash of the off-chain mandate the owner approved. */
@@ -101,6 +107,7 @@ export function validateSessionParams(p: SessionParams): void {
   requireByte(p.creator.sigScheme, 'creator.sigScheme');
   requireLength(p.creator.pubkey, 33, 'creator.pubkey');
   requireByte(p.flags, 'flags');
+  requireU16(p.vaultIndex, 'vaultIndex');
   p.allowedPrograms.forEach((program, i) => requireLength(program, 32, `allowedPrograms[${i}]`));
   p.cash.forEach((c, i) => requireLength(c.mint, 32, `cash[${i}].mint`));
 
@@ -141,7 +148,7 @@ export function validateSessionParams(p: SessionParams): void {
 
 /**
  * The fields shared by the hash and the instruction, in program order:
- * `session_authority(32) || expiry_slot_le(8) || programs_count(1) || programs(32 each) ||
+ * `session_authority(32) || expiry_slot_le(8) || vault_index_le(2) || programs_count(1) || programs(32 each) ||
  *  mandate_hash(32) || creator_sig_scheme(1) || creator_pubkey(33) || flags(1) ||
  *  cash_count(1) || cash(64 each)`.
  */
@@ -150,6 +157,7 @@ function sessionFields(p: SessionParams): Uint8Array[] {
   return [
     p.sessionAuthority,
     u64LE(p.expirySlot),
+    u16LE(p.vaultIndex),
     Uint8Array.of(p.allowedPrograms.length),
     ...p.allowedPrograms,
     p.mandateHash,
@@ -175,7 +183,7 @@ export function hashSessionData(p: SessionParams): Uint8Array {
 
 /**
  * CreateSession instruction data (disc 4):
- * `[4] || max_slot(u64 LE) || <sessionFields>` — length 118 + 32N + 64M.
+ * `[4] || max_slot(u64 LE) || <sessionFields>` — length 120 + 32N + 64M.
  * Accounts: {@link CREATE_SESSION_ACCOUNTS}.
  */
 export function buildCreateSessionIxData(args: SessionParams & { maxSlot: bigint }): Uint8Array {

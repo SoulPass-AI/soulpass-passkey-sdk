@@ -24,7 +24,7 @@ import {
   type CashMintPolicy,
   type SessionParams,
 } from '../../src/wire-format/session'
-import { NATIVE_SOL_MINT } from '../../src/wire-format/constants'
+import { MAIN_VAULT_INDEX, NATIVE_SOL_MINT } from '../../src/wire-format/constants'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), '../fixtures')
 const load = <T>(name: string): T => JSON.parse(readFileSync(join(fixtureDir, name), 'utf8'))
@@ -34,6 +34,7 @@ interface SessionDataVector {
   inputs: {
     session_authority_hex: string
     expiry_slot_le_hex: string
+    vault_index_le_hex: string
     programs_hex: string[]
     mandate_hash_hex: string
     creator_sig_scheme_hex: string
@@ -57,6 +58,7 @@ const sessionKat = load<{ format: string; sol_mint_hex: string; vectors: Session
 const layoutKat = load<{ vectors: LayoutVector[] }>('layout_kat.json')
 
 const u64 = (leHex: string): bigint => new DataView(hexToBytes(leHex).buffer).getBigUint64(0, true)
+const u16 = (leHex: string): number => new DataView(hexToBytes(leHex).buffer).getUint16(0, true)
 const byte = (h: string): number => hexToBytes(h)[0]!
 
 /** Inverse of encodeCashMintPolicy — reads the fixtures' 64-byte wire entries. */
@@ -76,7 +78,7 @@ const decodeCashMintPolicy = (wireHex: string): CashMintPolicy => {
 describe('hashSessionData against session_data_kat.json', () => {
   it('pins the byte order the program hashes', () => {
     expect(sessionKat.format).toBe(
-      'keccak256(session_authority(32) || expiry_slot_le(8) || programs_count(1) || programs(32 each) || mandate_hash(32) || creator_sig_scheme(1) || creator_pubkey(33) || flags(1) || cash_count(1) || cash(mint(32) || per_tx_cap_le(8) || period_cap_le(8) || period_slots_le(8) || lifetime_cap_le(8)) each)',
+      'keccak256(session_authority(32) || expiry_slot_le(8) || vault_index_le(2) || programs_count(1) || programs(32 each) || mandate_hash(32) || creator_sig_scheme(1) || creator_pubkey(33) || flags(1) || cash_count(1) || cash(mint(32) || per_tx_cap_le(8) || period_cap_le(8) || period_slots_le(8) || lifetime_cap_le(8)) each)',
     )
     expect(sessionKat.sol_mint_hex).toBe(hex(NATIVE_SOL_MINT))
     expect(sessionKat.vectors).toHaveLength(4)
@@ -89,6 +91,7 @@ describe('hashSessionData against session_data_kat.json', () => {
     const params: SessionParams = {
       sessionAuthority: hexToBytes(v.inputs.session_authority_hex),
       expirySlot: u64(v.inputs.expiry_slot_le_hex),
+      vaultIndex: u16(v.inputs.vault_index_le_hex),
       allowedPrograms: v.inputs.programs_hex.map(hexToBytes),
       mandateHash: hexToBytes(v.inputs.mandate_hash_hex),
       creator: {
@@ -118,6 +121,7 @@ function paramsFromLayout(v: LayoutVector): { maxSlot: bigint; params: SessionPa
     params: {
       sessionAuthority: hexToBytes(f('session_authority')),
       expirySlot: u64(f('expiry_slot_le')),
+      vaultIndex: u16(f('vault_index_le')),
       allowedPrograms: Array.from({ length: count }, (_, i) => hexToBytes(f(`program_${i}`))),
       mandateHash: hexToBytes(f('mandate_hash')),
       creator: { sigScheme: byte(f('creator_sig_scheme')), pubkey: hexToBytes(f('creator_pubkey')) },
@@ -130,11 +134,12 @@ function paramsFromLayout(v: LayoutVector): { maxSlot: bigint; params: SessionPa
 describe('buildCreateSessionIxData against layout_kat.json', () => {
   const v = layoutKat.vectors.find((x) => x.name === 'ix_create_session_disc4')!
 
-  it('ix_create_session_disc4 is byte-identical (374 B)', () => {
+  it('ix_create_session_disc4 is byte-identical (376 B)', () => {
     expect(v).toBeDefined()
     const { maxSlot, params } = paramsFromLayout(v)
     const data = buildCreateSessionIxData({ maxSlot, ...params })
-    expect(data).toHaveLength(374)
+    expect(data).toHaveLength(376)
+    expect(params.vaultIndex).toBe(3)
     expect(data).toHaveLength(v.length)
     expect(data[0]).toBe(4)
     expect(hex(data)).toBe(v.bytes_hex)
@@ -165,6 +170,7 @@ describe('sessionParamsValidation', () => {
   const base: SessionParams = {
     sessionAuthority: new Uint8Array(32).fill(0x11),
     expirySlot: 500_000n,
+    vaultIndex: MAIN_VAULT_INDEX,
     allowedPrograms: [new Uint8Array(32).fill(0x51)],
     mandateHash: new Uint8Array(32).fill(0x71),
     creator: { sigScheme: 0, pubkey: new Uint8Array(33).fill(0x02) },
@@ -232,6 +238,13 @@ describe('sessionParamsValidation', () => {
     const sixCash = [sol, ...Array.from({ length: 5 }, (_, i) => ({ ...sol, mint: new Uint8Array(32).fill(0xc0 + i) }))]
     expectChainError({ ...base, sessionAuthority: zeroAuthority, cash: sixCash }, 'TooManyCashMints')
     expectChainError({ ...base, allowedPrograms: [], cash: sixCash }, 'TooManyAllowedPrograms')
+  })
+
+  it('vaultIndex outside u16 throws RangeError; every index changes the hash', () => {
+    for (const vaultIndex of [-1, 0x10000, 0.5]) {
+      expect(() => validateSessionParams({ ...base, vaultIndex })).toThrow(/vaultIndex must be a u16/)
+    }
+    expect(hex(hashSessionData({ ...base, vaultIndex: 1 }))).not.toBe(hex(hashSessionData(base)))
   })
 
   it('wrong-width fields throw RangeError', () => {

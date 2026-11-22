@@ -57,6 +57,14 @@ export function requireByte(value: number, label: string): Uint8Array {
   return Uint8Array.of(value);
 }
 
+/** Validate and encode a u16 payload field (LE). */
+export function requireU16(value: number, label: string): Uint8Array {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+    throw new RangeError(`${label} must be a u16, got ${value}`);
+  }
+  return u16LE(value);
+}
+
 /** Flat concat. Allocates exactly once — important on hot paths like inner_hash. */
 export function concatBytes(parts: ReadonlyArray<Uint8Array>): Uint8Array {
   let total = 0;

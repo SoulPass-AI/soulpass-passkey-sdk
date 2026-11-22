@@ -115,10 +115,11 @@ describe('buildExecuteIxData', () => {
     },
   ]
 
-  it('disc=1 layout when no bumps: [disc=1][max_slot u64 LE][inner_count u32 LE][...payload]', () => {
+  it('disc=1 layout when no bumps: [disc=1][max_slot u64 LE][vault_index u16 LE][inner_count u32 LE][...payload]', () => {
     const remaining = encodeRemainingAccounts(inner)
     const data = buildExecuteIxData({
       maxSlot: 0x1122334455667788n,
+      vaultIndex: 0x0203,
       innerInstructions: inner,
       remainingAccounts: remaining,
     })
@@ -127,10 +128,12 @@ describe('buildExecuteIxData', () => {
     // max_slot u64 LE at bytes 1..9
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
     expect(view.getBigUint64(1, true)).toBe(0x1122334455667788n)
-    // inner_count u32 LE at bytes 9..13
-    expect(view.getUint32(9, true)).toBe(1)
+    // vault_index u16 LE at bytes 9..11
+    expect(view.getUint16(9, true)).toBe(0x0203)
+    // inner_count u32 LE at bytes 11..15
+    expect(view.getUint32(11, true)).toBe(1)
     // Then the encoded inner ix starts: program_id (32) | accounts_len (2) | data_len (2) | entries (2) | data (2)
-    const payloadStart = 13
+    const payloadStart = 15
     expect(data.slice(payloadStart, payloadStart + 32)).toEqual(prog.toBytes())
     expect(view.getUint16(payloadStart + 32, true)).toBe(1) // accounts_len
     expect(view.getUint16(payloadStart + 34, true)).toBe(2) // data_len
@@ -142,11 +145,12 @@ describe('buildExecuteIxData', () => {
     expect(data.slice(payloadStart + 38)).toEqual(new Uint8Array([0xde, 0xad]))
   })
 
-  it('disc=16 layout when bumps present: [disc=16][max_slot][num_eph][bumps][inner_count][...payload]', () => {
+  it('disc=16 layout when bumps present: [disc=16][max_slot][vault_index][num_eph][bumps][inner_count][...payload]', () => {
     const remaining = encodeRemainingAccounts(inner)
     const bumps = Uint8Array.of(254, 253)
     const data = buildExecuteIxData({
       maxSlot: 42n,
+      vaultIndex: 7,
       innerInstructions: inner,
       remainingAccounts: remaining,
       ephemeralSignerBumps: bumps,
@@ -155,10 +159,20 @@ describe('buildExecuteIxData', () => {
     expect(data[0]).toBe(MachineWalletDisc.ExecuteWithEphemeralSigners)
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
     expect(view.getBigUint64(1, true)).toBe(42n)
-    expect(data[9]).toBe(bumps.length)
-    expect(data.slice(10, 10 + bumps.length)).toEqual(bumps)
+    expect(view.getUint16(9, true)).toBe(7)
+    expect(data[11]).toBe(bumps.length)
+    expect(data.slice(12, 12 + bumps.length)).toEqual(bumps)
     // inner_count u32 LE right after bumps
-    expect(view.getUint32(10 + bumps.length, true)).toBe(1)
+    expect(view.getUint32(12 + bumps.length, true)).toBe(1)
+  })
+
+  it('vaultIndex must be a u16 (no default: the caller names the vault)', () => {
+    const remaining = encodeRemainingAccounts(inner)
+    for (const vaultIndex of [-1, 0x10000, 1.5]) {
+      expect(() =>
+        buildExecuteIxData({ maxSlot: 1n, vaultIndex, innerInstructions: inner, remainingAccounts: remaining }),
+      ).toThrow(/vaultIndex must be a u16/)
+    }
   })
 
   it('disc=16 takes 1..=4 bumps: num_ephemeral 0 and 5 throw (TooManyEphemeralSigners on chain)', () => {
@@ -166,14 +180,15 @@ describe('buildExecuteIxData', () => {
     const build = (bumps: Uint8Array) =>
       buildExecuteIxData({
         maxSlot: 42n,
+        vaultIndex: 0,
         innerInstructions: inner,
         remainingAccounts: remaining,
         ephemeralSignerBumps: bumps,
       })
     expect(() => build(new Uint8Array(0))).toThrow(RangeError)
     expect(() => build(new Uint8Array(5).fill(255))).toThrow(RangeError)
-    expect(build(new Uint8Array(1).fill(255))[9]).toBe(1)
-    expect(build(new Uint8Array(4).fill(255))[9]).toBe(4)
+    expect(build(new Uint8Array(1).fill(255))[11]).toBe(1)
+    expect(build(new Uint8Array(4).fill(255))[11]).toBe(4)
   })
 
   it('rejects inner-ix referencing an account missing from remainingAccounts', () => {
@@ -189,6 +204,7 @@ describe('buildExecuteIxData', () => {
     expect(() =>
       buildExecuteIxData({
         maxSlot: 0n,
+        vaultIndex: 0,
         innerInstructions: innerWithStray,
         remainingAccounts: remaining,
       }),
@@ -210,6 +226,7 @@ describe('buildExecuteIxData', () => {
     expect(() =>
       buildExecuteIxData({
         maxSlot: 0n,
+        vaultIndex: 0,
         innerInstructions: innerOverflow,
         remainingAccounts: remaining,
       }),
@@ -225,6 +242,7 @@ describe('buildExecuteIxData', () => {
     const build = (innerInstructions: InnerInstruction[]) =>
       buildExecuteIxData({
         maxSlot: 0n,
+        vaultIndex: 0,
         innerInstructions,
         remainingAccounts: encodeRemainingAccounts(innerInstructions),
       })

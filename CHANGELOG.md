@@ -1,5 +1,19 @@
 # Changelog
 
+## 未发布（machine-wallet 多 vault）
+
+与 machine-wallet 多 vault 协议逐字节对齐（三个 KAT 原样重拷）。破坏性变更，不保留旧形态。
+
+- **vault 按 u16 索引派生**：vault `i` = `find_program_address([machine_vault, wallet, i LE], program)`，
+  canonical bump。新增 `deriveVaultPda(wallet, vaultIndex)`（`./protocol`）与 `MAIN_VAULT_INDEX = 0`；
+  `deriveVaultPDA(walletPDA, vaultIndex)`（`./solana-adapter`）第二个参数由 `vaultBump` 改为 `vaultIndex`。
+- **钱包账户头 186 → 153 字节**：去掉 `vault_bump` 与 `vault`，`MachineWalletState` 删除 `vaultBump` / `vault`。
+- **会话账户头 109 → 111 字节**：`vault_index` u16 @109，`SessionState` 新增 `vaultIndex`；
+  `sessionAccountSize` = 851 + 32P + 96C。
+- **必填 `vaultIndex`（无默认值）**：`buildExecuteIxData`（disc 1/16）、`buildCloseWalletIxData`、
+  `computeExecuteMessage`、`computeExecuteEphemeralMessage`、`computeCloseWalletMessage`、
+  `SessionParams`（进入 `hashSessionData` 与 `buildCreateSessionIxData`）。SessionExecute 线格式不变。
+
 ## 0.6.0 — 2026-11-03（machine-wallet f3b7746：撤销与 recovery 否决不再被计数器抢先）
 
 与 machine-wallet `f3b7746` 逐字节对齐（`signed_message_kat.json` 原样重拷，`layout_kat.json` 不变）。

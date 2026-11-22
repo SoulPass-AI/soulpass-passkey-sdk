@@ -16,7 +16,7 @@ function makeConnection(
   } as unknown as Connection
 }
 
-// Build a synthetic single-authority 'W' account (186-byte header + one slot)
+// Build a synthetic single-authority 'W' account (153-byte header + one slot)
 // that survives parseWalletState's full validation. Filler is `0xAA` so a
 // mis-aligned read surfaces as a wrong value rather than a coincidental zero;
 // only the fields the decoder checks are set (offsets from `state.rs`).
@@ -26,19 +26,19 @@ function makeAccountBody(nonce: bigint): Buffer {
   buf[34] = 1 // threshold
   buf[35] = 1 // authority_count
   buf.writeBigUInt64LE(nonce, 36)
-  // root (53) and authority 0 (186): the same WebAuthn key.
-  for (const off of [53, 186]) {
+  // root (52) and authority 0 (153): the same WebAuthn key.
+  for (const off of [52, 153]) {
     buf[off] = SigScheme.Webauthn
     buf[off + 1] = 0x02
   }
-  // pending_root (95) EMPTY: 0xFF || 33 zero bytes, recovery_eta (129) = 0.
-  buf[95] = 0xff
-  buf.fill(0, 96, 137)
-  buf[169] = 0 // recovery_threshold
-  // session_nonce (170) and governance_nonce (178) differ from N, so reading
+  // pending_root (94) EMPTY: 0xFF || 33 zero bytes, recovery_eta (128) = 0.
+  buf[94] = 0xff
+  buf.fill(0, 95, 136)
+  buf[136] = 0 // recovery_threshold
+  // session_nonce (137) and governance_nonce (145) differ from N, so reading
   // the wrong counter as the Execute nonce fails.
-  buf.writeBigUInt64LE(0x0b0b_0b0bn, 170)
-  buf.writeBigUInt64LE(0x1111_1111n, 178)
+  buf.writeBigUInt64LE(0x0b0b_0b0bn, 137)
+  buf.writeBigUInt64LE(0x1111_1111n, 145)
   return buf
 }
 

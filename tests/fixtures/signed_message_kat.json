@@ -6,17 +6,17 @@
       "name": "execute_local",
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_execute_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "inner_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "2222222222222222222222222222222222222222222222222222222222222222"],
-      "keccak256_hex": "f07cdb30848f41edd07d53be5bbabbc6ac3d6f92415ab0a1430f9f14bd62b329"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "vault_index_le", "inner_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0302", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "1cc453ee64f78371e0d6fa8f16fc2939ab4926671fcf9eb5e815663a69735c9c"
     },
     {
       "name": "execute_ephemeral_local",
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_execute_ephemeral_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "num_ephemeral_signers", "ephemeral_bumps", "inner_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
-      "keccak256_hex": "9897cc743e415a782db6cde0d5fe20187817ee9bf987683698342b7e3398ca2e"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "vault_index_le", "num_ephemeral_signers", "ephemeral_bumps", "inner_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0302", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "e67f4842ba0d79f54d146a6815e732a60c5107c2a6a789fdea4b72e7de2ba05d"
     },
     {
       "name": "add_authority_pop_local",
@@ -110,9 +110,9 @@
       "name": "close_wallet_local",
       "domain": "machine_wallet_local_v1",
       "tag": "machine_wallet_close_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "destination"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
-      "keccak256_hex": "b3f1929ce7468a39b2edb84edaa9a71fc1e0fcb11eb9ae456916517c4f5b2b82"
+      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "vault_index_le", "destination"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "0302", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "d2099dd439343691fffe87b8b2c7910c1ae012f0c1510944edbb9a4211034902"
     },
     {
       "name": "propose_recovery_local",
@@ -158,17 +158,17 @@
       "name": "execute_devnet",
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_execute_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "inner_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "2222222222222222222222222222222222222222222222222222222222222222"],
-      "keccak256_hex": "885f131f805d004a30e7168f65bd1fce346f5d3ca66005d7355b43a004b6ea5d"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "vault_index_le", "inner_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0302", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "a89ea3d1fb0c9070389eb4d938982c606ecafb6b9f60e556052913cf42e5d885"
     },
     {
       "name": "execute_ephemeral_devnet",
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_execute_ephemeral_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "num_ephemeral_signers", "ephemeral_bumps", "inner_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
-      "keccak256_hex": "5cb1f44976449ef7d1532201a7a4543c2ccbaca8d6555aaa5a5ea4816260d969"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "vault_index_le", "num_ephemeral_signers", "ephemeral_bumps", "inner_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0302", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "eedff1a4b8cb236358bc7c4de5379389bef756c831cd8267d6be297c10d8b3e0"
     },
     {
       "name": "add_authority_pop_devnet",
@@ -262,9 +262,9 @@
       "name": "close_wallet_devnet",
       "domain": "machine_wallet_devnet_v1",
       "tag": "machine_wallet_close_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "destination"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
-      "keccak256_hex": "3bb3fe92f36a74e0544582d03496efde6fc25c6f6797954ceda46fa91e677203"
+      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "vault_index_le", "destination"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "0302", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "0d23e4f7c7ead3dd5181b5cfac6e84bdc10160a505f860072e2daa68679cfcef"
     },
     {
       "name": "propose_recovery_devnet",
@@ -310,17 +310,17 @@
       "name": "execute_mainnet",
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_execute_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "inner_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "2222222222222222222222222222222222222222222222222222222222222222"],
-      "keccak256_hex": "dc44f7b5c44109bb8121e1d4e2745d0894ec2fc5c7eb9e5d4a61089d9c63c33e"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "vault_index_le", "inner_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0302", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "7c24474c53ba2f0502dcb4681ea981e4b871580f974e2527fad02f04862b24e5"
     },
     {
       "name": "execute_ephemeral_mainnet",
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_execute_ephemeral_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "num_ephemeral_signers", "ephemeral_bumps", "inner_hash"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
-      "keccak256_hex": "246dbdbb3b1e3bcd949a01afb8e4687226058ad10eb866a204a65e330ffd6d9e"
+      "payload_field_names": ["wallet", "creation_slot_le", "nonce_le", "max_slot_le", "vault_index_le", "num_ephemeral_signers", "ephemeral_bumps", "inner_hash"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "0700000000000000", "90d0030000000000", "0302", "02", "fefd", "2222222222222222222222222222222222222222222222222222222222222222"],
+      "keccak256_hex": "7faf34f1fab3fc4b209846e8031530f5bcd35aa2eb78db1c394ee08c8a1c6896"
     },
     {
       "name": "add_authority_pop_mainnet",
@@ -414,9 +414,9 @@
       "name": "close_wallet_mainnet",
       "domain": "machine_wallet_mainnet_v1",
       "tag": "machine_wallet_close_v1",
-      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "destination"],
-      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
-      "keccak256_hex": "1335131c78a365ed699e664170e767aca2a28742a7cf201f6fb29f3ae3d457c3"
+      "payload_field_names": ["wallet", "creation_slot_le", "governance_nonce_le", "max_slot_le", "vault_index_le", "destination"],
+      "payload_parts_hex": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "e803000000000000", "1100000000000000", "90d0030000000000", "0302", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      "keccak256_hex": "381f85e9ee73ec462101d2200eb45cccb8ea560622c14be4047272ce1925bf8c"
     },
     {
       "name": "propose_recovery_mainnet",

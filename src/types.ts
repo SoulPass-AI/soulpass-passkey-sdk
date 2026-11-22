@@ -2,6 +2,8 @@
 //
 // SoulPass wallets carry TWO Solana PDAs with very different semantics:
 //   • vault PDA  — SystemProgram-owned, holds funds + ATAs (user-facing).
+//                  A wallet has a vault per u16 index; the connected address
+//                  is vault 0 (`MAIN_VAULT_INDEX`), the owner's main account.
 //   • state PDA  — program-owned MachineWallet account, holds nonce /
 //                  authorities / threshold (protocol seed for ephemeral
 //                  signer derivation + Execute nonce prediction).
@@ -39,7 +41,7 @@ declare const __statePdaBrand: unique symbol
 declare const __vaultPdaKeyBrand: unique symbol
 declare const __statePdaKeyBrand: unique symbol
 
-/** Vault PDA (SystemProgram-owned, user-facing receive address). Base58. */
+/** Vault PDA (SystemProgram-owned, user-facing receive address; vault 0 for the connected wallet). Base58. */
 export type VaultPda = string & { readonly [__vaultPdaBrand]: true }
 /** MachineWallet state PDA (program-owned, protocol seed). Base58. */
 export type StatePda = string & { readonly [__statePdaBrand]: true }

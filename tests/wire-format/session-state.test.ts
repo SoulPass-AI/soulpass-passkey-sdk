@@ -4,9 +4,9 @@
  * (`tests/fixtures/layout_kat.json`, a verbatim copy of the program's file).
  *
  * Offsets are written out from `state.rs` (`SessionState`) for P = 2, C = 2:
- * generation at 101; budget segment at 109 + 2×32 = 173 → mandate 173,
- * creator 205, rent_payer 239, cash_count 271, cash 272 (96 B each),
- * sleeve_count 464, sleeve 465.
+ * generation at 101, vault_index at 109; budget segment at 111 + 2×32 = 175
+ * → mandate 175, creator 207, rent_payer 241, cash_count 273, cash 274
+ * (96 B each), sleeve_count 466, sleeve 467.
  */
 
 import { readFileSync } from 'node:fs'
@@ -53,26 +53,28 @@ const OFF = {
   REVOKED: 82,
   FLAGS: 99,
   PROGRAMS_COUNT: 100,
-  PROGRAM_1: 141,
-  CREATOR: 205,
-  CASH_COUNT: 271,
-  CASH_0: 272,
-  CASH_1: 368,
-  SLEEVE_COUNT: 464,
-  SLEEVE_1: 505,
+  PROGRAM_1: 143,
+  CREATOR: 207,
+  CASH_COUNT: 273,
+  CASH_0: 274,
+  CASH_1: 370,
+  SLEEVE_COUNT: 466,
+  SLEEVE_1: 507,
 } as const
 
 describe('parseSessionState — layout KAT (program bytes)', () => {
   it('decodes session_t_p2_sol_cash1_credit1_sleeve1_passkey_creator field-for-field', () => {
     const data = sessionBytes()
-    expect(data).toHaveLength(1105)
-    expect(sessionAccountSize(2, 2)).toBe(1105)
+    expect(data).toHaveLength(1107)
+    expect(sessionAccountSize(2, 2)).toBe(1107)
 
     const s: SessionState = parseSessionState(data)
     expect(s.bump).toBe(0xfc)
     expect(s.wallet).toEqual(field('wallet'))
     expect(s.authority).toEqual(field('authority'))
     expect(s.generation).toBe(u64(field('generation_le')))
+    expect(s.vaultIndex).toBe(3)
+    expect(field('vault_index_le')).toEqual(new Uint8Array([3, 0]))
     expect(s.createdSlot).toBe(u64(field('created_slot_le')))
     expect(s.expirySlot).toBe(u64(field('expiry_slot_le')))
     expect(s.revoked).toBe(false)
@@ -107,9 +109,9 @@ describe('parseSessionState — layout KAT (program bytes)', () => {
     expect(s.sleeve[0]).toEqual({ mint: sleeve.slice(0, 32), amount: u64(sleeve, 32) })
   })
 
-  it('sessionAccountSize is 849 + 32P + 96C', () => {
-    expect(sessionAccountSize(1, 1)).toBe(977)
-    expect(sessionAccountSize(8, 5)).toBe(1585)
+  it('sessionAccountSize is 851 + 32P + 96C', () => {
+    expect(sessionAccountSize(1, 1)).toBe(979)
+    expect(sessionAccountSize(8, 5)).toBe(1587)
   })
 
   it('sessionSolPolicy returns the all-zero-mint entry', () => {
@@ -174,7 +176,7 @@ describe('sessionStateValidation', () => {
   })
 
   it('rejects a repeated allowed program', () => {
-    rejects((d) => void d.copyWithin(OFF.PROGRAM_1, 109, 141), /allowed program/i)
+    rejects((d) => void d.copyWithin(OFF.PROGRAM_1, 111, 143), /allowed program/i)
   })
 
   it('rejects an unknown creator sig_scheme', () => {

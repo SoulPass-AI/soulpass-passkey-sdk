@@ -42,8 +42,8 @@ describe('machine-wallet constants', () => {
 
   it('layout sizes', () => {
     expect(C.AUTHORITY_SLOT_SIZE).toBe(34)
-    expect(C.WALLET_HEADER_SIZE).toBe(186)
-    expect(C.SESSION_HEADER_SIZE).toBe(109)
+    expect(C.WALLET_HEADER_SIZE).toBe(153)
+    expect(C.SESSION_HEADER_SIZE).toBe(111)
     expect(C.CASH_MINT_STATE_SIZE).toBe(96)
     expect(C.SLEEVE_ENTRY_SIZE).toBe(40)
   })
@@ -51,6 +51,7 @@ describe('machine-wallet constants', () => {
   it('PDA seeds', () => {
     expect(C.WALLET_SEED).toBe('machine_wallet')
     expect(C.VAULT_SEED).toBe('machine_vault')
+    expect(C.MAIN_VAULT_INDEX).toBe(0)
     expect(C.SESSION_SEED).toBe('machine_session')
   })
 })

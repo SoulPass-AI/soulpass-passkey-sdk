@@ -13,7 +13,7 @@
  * byte sequence.
  */
 
-import { concatBytes, requireLength } from './_bytes';
+import { concatBytes, requireLength, requireU16 } from './_bytes';
 import { MAX_EPHEMERAL_SIGNERS } from './constants';
 import { hashWalletOp, MACHINE_WALLET_TAGS, type FundsNonceBound } from './authority-messages';
 
@@ -33,35 +33,43 @@ export const EXECUTE_EPHEMERAL_TAG = new TextEncoder().encode(
  * Compute the disc=1 Execute challenge.
  *
  * Payload: `wallet(32) || creation_slot_u64_le || funds_nonce_u64_le ||
- * max_slot_u64_le || inner_hash(32)`, hashed under the envelope and deployment
- * domain — see `hashSignedMessage`.
+ * max_slot_u64_le || vault_index_u16_le || inner_hash(32)`, hashed under the
+ * envelope and deployment domain — see `hashSignedMessage`.
  *
  * `innerHash` MUST come from {@link import('./inner-hash').computeInnerHash} —
  * any other hash function will produce a value the chain rejects.
  */
 export function computeExecuteMessage(
-  args: FundsNonceBound & { innerHash: Uint8Array },
+  args: FundsNonceBound & { vaultIndex: number; innerHash: Uint8Array },
 ): Uint8Array {
-  return hashWalletOp(EXECUTE_TAG, args, args.fundsNonce, requireLength(args.innerHash, 32, 'innerHash'));
+  return hashWalletOp(
+    EXECUTE_TAG,
+    args,
+    args.fundsNonce,
+    requireU16(args.vaultIndex, 'vaultIndex'),
+    requireLength(args.innerHash, 32, 'innerHash'),
+  );
 }
 
 /**
  * Compute the disc=16 ExecuteWithEphemeralSigners challenge.
  *
  * Payload: `wallet(32) || creation_slot_u64_le || funds_nonce_u64_le ||
- * max_slot_u64_le || bumps_len(1) || bumps(bumps_len) || inner_hash(32)`.
+ * max_slot_u64_le || vault_index_u16_le || bumps_len(1) || bumps(bumps_len) ||
+ * inner_hash(32)`.
  *
  * Throws `RangeError` unless `ephemeralSignerBumps` holds
  * 1..=`MAX_EPHEMERAL_SIGNERS` (4) bumps — encoded by the same
  * `encodeEphemeralBumps` as `buildExecuteIxData`.
  */
 export function computeExecuteEphemeralMessage(
-  args: FundsNonceBound & { ephemeralSignerBumps: Uint8Array; innerHash: Uint8Array },
+  args: FundsNonceBound & { vaultIndex: number; ephemeralSignerBumps: Uint8Array; innerHash: Uint8Array },
 ): Uint8Array {
   return hashWalletOp(
     EXECUTE_EPHEMERAL_TAG,
     args,
     args.fundsNonce,
+    requireU16(args.vaultIndex, 'vaultIndex'),
     encodeEphemeralBumps(args.ephemeralSignerBumps),
     requireLength(args.innerHash, 32, 'innerHash'),
   );

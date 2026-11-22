@@ -41,14 +41,15 @@ main bundle):
 - **`./react`** — `SoulPassProvider` + `useSoulPass()`: owns a wallet
   instance, persists the connection to sessionStorage, restores on reload.
   `react` is an optional peer dependency.
-- **`./solana-adapter`** — `SoulPassWalletAdapter` + `deriveVaultPDA`
+- **`./solana-adapter`** — `SoulPassWalletAdapter` + `deriveVaultPDA(walletPDA, vaultIndex)`
   (the PDA validators are re-exported here for compatibility).
   `signTransaction()` throws by design: SoulPass signs-and-submits in one
   step; dApps use `sendTransaction`.
 - **`./protocol`** — the MachineWallet protocol layer, mirroring
   `machine-wallet/program/src`: program constants and error codes
-  (`wire-format/constants.ts`, `wire-format/errors.ts`); wallet and session
-  PDAs (`deriveWalletPda`, `deriveSessionPda`) and ephemeral signers; account
+  (`wire-format/constants.ts`, `wire-format/errors.ts`); wallet, vault and
+  session PDAs (`deriveWalletPda`, `deriveVaultPda`, `deriveSessionPda`) and
+  ephemeral signers; account
   decoders for the wallet (`parseWalletState`, `predictNextExecuteNonce`) and
   the session (`parseSessionState`, `isSessionLive`); and wire formats
   (`src/wire-format/`): signed-message envelope, operation tags, every
@@ -67,18 +68,22 @@ main bundle):
 There is one layout per account kind, told apart by byte 0 — no version
 field, no older layout to fall back to:
 
-- **Wallet (`'W'`, 0x57)** — a 186-byte header (`bump`, `wallet_id`,
+- **Wallet (`'W'`, 0x57)** — a 153-byte header (`bump`, `wallet_id`,
   `threshold`, `authority_count`, `nonce` (funds N), `creation_slot`,
-  `vault_bump`, `root`, `authority_epoch`, `pending_root`, `recovery_eta`,
-  `vault`, `recovery_threshold`, `session_nonce` (S) @170, `governance_nonce`
-  (G) @178) followed by `authority_count` 34-byte authority slots. Each signed
+  `root`, `authority_epoch`, `pending_root`, `recovery_eta`,
+  `recovery_threshold`, `session_nonce` (S) @137, `governance_nonce`
+  (G) @145) followed by `authority_count` 34-byte authority slots. The
+  wallet stores no vault: vault `i` (u16) is the canonical-bump PDA
+  `[machine_vault, wallet, i LE]` (`deriveVaultPda`); vault 0
+  (`MAIN_VAULT_INDEX`) is the owner's main account. Each signed
   message binds exactly one of N / S / G / the target session's generation;
   `compute*Message` takes it under its own name (`fundsNonce`,
   `sessionNonce`, `governanceNonce`, `generation`).
   `parseWalletState` accepts exactly `walletAccountSize(count)` bytes and
   rejects what the program's validating `deserialize` rejects (a pending root
   with eta 0 is accepted, as on chain). Offsets: `src/wallet-state.ts`.
-- **Session (`'T'`, 0x54)** — a 109-byte header (`generation` @101, the
+- **Session (`'T'`, 0x54)** — a 111-byte header (`vault_index` u16 @109: the
+  one vault the session may move, fixed across renewals; `generation` @101, the
   post-increment funds nonce of the CreateSession that made it; session-key
   instructions bind it, the owner's RevokeSession binds `created_slot` @66
   instead (a renewal keeps it), and a renewing
@@ -86,7 +91,7 @@ field, no older layout to fall back to:
   programs, the mandate hash, the creator slot, the rent payer, the 96-byte cash
   budgets (`cashCredit` u64 @88: NET_EXPOSURE proceeds beyond outstanding
   principal, ≤ `lifetimeCap`, never nonzero together with `lifetimeSpent`) and
-  a 16-slot sleeve (`sessionAccountSize(P, C)` = 849 + 32P + 96C, 977..1585).
+  a 16-slot sleeve (`sessionAccountSize(P, C)` = 851 + 32P + 96C, 979..1587).
   `parseSessionState` accepts only `'T'` at exact length and mirrors the
   program's credit invariants. `isSessionLive` mirrors
   `SessionExecute`: not revoked, `slot <= expiry_slot` (live through the
@@ -105,7 +110,11 @@ included) and validates widths and byte ranges, throwing `RangeError`.
 first, which reports faults in the program's order (decoder counts, then
 handler checks). `buildExecuteIxData` builds Execute (disc 1) when
 `ephemeralSignerBumps` is omitted and ExecuteWithEphemeralSigners (disc 16)
-for 1..=4 bumps; an empty array throws.
+for 1..=4 bumps; an empty array throws. Every vault-scoped builder and hash
+(Execute / disc 16, CloseWallet, CreateSession and their messages,
+`deriveVaultPda`) takes a required `vaultIndex` (u16) — no default;
+`MAIN_VAULT_INDEX` names the main account. SessionExecute carries none: its
+vault is the session's `vaultIndex`.
 
 **`./payments`** (with its hook, **`./payments-react`**) is an additive application layer above the
 chain-neutral payment wallet port. It owns canonical multichain PaymentIntent

@@ -23,8 +23,9 @@
  * | 99                | flags                  | u8                  |
  * | 100               | allowed_programs_count | u8 (P, 1..=8)       |
  * | 101               | generation             | u64                 |
- * | 109               | allowed_programs       | [[u8; 32]; P]       |
- * | B = 109 + 32P     | mandate_hash           | [u8; 32]            |
+ * | 109               | vault_index            | u16                 |
+ * | 111               | allowed_programs       | [[u8; 32]; P]       |
+ * | B = 111 + 32P     | mandate_hash           | [u8; 32]            |
  * | B + 32            | creator                | AuthoritySlot       |
  * | B + 66            | rent_payer             | [u8; 32]            |
  * | B + 98            | cash_count             | u8 (C, 0..=5)       |
@@ -93,6 +94,8 @@ export interface SessionState {
   authority: Uint8Array;
   createdSlot: bigint;
   generation: bigint;
+  /** The one wallet vault the session may move (`SessionExecute`'s vault account); fixed for its life. */
+  vaultIndex: number;
   /** Last slot at which the program still accepts the session. */
   expirySlot: bigint;
   revoked: boolean;
@@ -128,9 +131,10 @@ const OFFSET = {
   FLAGS: 99,
   ALLOWED_PROGRAMS_COUNT: 100,
   GENERATION: 101,
+  VAULT_INDEX: 109,
 } as const;
 
-/** Offsets inside the budget segment, relative to `109 + 32P`. */
+/** Offsets inside the budget segment, relative to `111 + 32P`. */
 const BUDGET = {
   MANDATE: 0,
   CREATOR: 32,
@@ -143,7 +147,7 @@ const budgetOffset = (programCount: number): number => SESSION_HEADER_SIZE + pro
 
 /**
  * Exact account length for `programCount` allowed programs and `cashCount`
- * cash entries (`SessionState::size`): `849 + 32P + 96C`.
+ * cash entries (`SessionState::size`): `851 + 32P + 96C`.
  */
 export function sessionAccountSize(programCount: number, cashCount: number): number {
   if (!Number.isInteger(programCount) || programCount < 0 || programCount > MAX_ALLOWED_PROGRAMS) {
@@ -302,6 +306,7 @@ export function parseSessionState(data: Uint8Array): SessionState {
     authority,
     createdSlot,
     generation: u64(OFFSET.GENERATION),
+    vaultIndex: view.getUint16(OFFSET.VAULT_INDEX, true),
     expirySlot,
     revoked: data[OFFSET.REVOKED] !== 0,
     walletCreationSlot: u64(OFFSET.WALLET_CREATION_SLOT),

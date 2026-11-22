@@ -64,9 +64,9 @@ export const AUTHORITY_PUBKEY_SIZE = 33;
 /** `state::AUTHORITY_SLOT_SIZE`: `sig_scheme(1) || pubkey(33)`. */
 export const AUTHORITY_SLOT_SIZE = 1 + AUTHORITY_PUBKEY_SIZE;
 /** `MachineWallet::HEADER_SIZE`. */
-export const WALLET_HEADER_SIZE = 186;
+export const WALLET_HEADER_SIZE = 153;
 /** `SessionState::HEADER_SIZE`. */
-export const SESSION_HEADER_SIZE = 109;
+export const SESSION_HEADER_SIZE = 111;
 /** `CashMintState::SIZE`. */
 export const CASH_MINT_STATE_SIZE = 96;
 /** `SleeveEntry::SIZE`. */
@@ -76,5 +76,10 @@ export const SLEEVE_ENTRY_SIZE = 40;
 export const WALLET_SEED = 'machine_wallet';
 /** `MachineWallet::VAULT_SEED_PREFIX`. */
 export const VAULT_SEED = 'machine_vault';
+/**
+ * Vault 0: the owner's main account. Every vault-scoped builder and hash
+ * takes an explicit `vaultIndex` (u16); pass this when you mean the main one.
+ */
+export const MAIN_VAULT_INDEX = 0;
 /** `state::SESSION_SEED_PREFIX`. */
 export const SESSION_SEED = 'machine_session';

@@ -1,5 +1,5 @@
 /**
- * Off-chain reader for the MachineWallet account (`'W'` tag, 186-byte header).
+ * Off-chain reader for the MachineWallet account (`'W'` tag, 153-byte header).
  *
  * Lives here (not in `ephemeral-signers.ts`) because the byte layout is an
  * on-chain implementation detail of `machine-wallet`, while ephemeral-signer
@@ -39,16 +39,17 @@ export type { SigSchemeValue, WalletAuthoritySlot } from './wire-format/authorit
  * | 35     | authority_count    | u8            |
  * | 36     | nonce              | u64           |
  * | 44     | creation_slot      | u64           |
- * | 52     | vault_bump         | u8            |
- * | 53     | root               | AuthoritySlot |
- * | 87     | authority_epoch    | u64           |
- * | 95     | pending_root       | AuthoritySlot |
- * | 129    | recovery_eta       | u64           |
- * | 137    | vault              | [u8; 32]      |
- * | 169    | recovery_threshold | u8            |
- * | 170    | session_nonce      | u64           |
- * | 178    | governance_nonce   | u64           |
- * | 186    | authorities        | [AuthoritySlot; N] |
+ * | 52     | root               | AuthoritySlot |
+ * | 86     | authority_epoch    | u64           |
+ * | 94     | pending_root       | AuthoritySlot |
+ * | 128    | recovery_eta       | u64           |
+ * | 136    | recovery_threshold | u8            |
+ * | 137    | session_nonce      | u64           |
+ * | 145    | governance_nonce   | u64           |
+ * | 153    | authorities        | [AuthoritySlot; N] |
+ *
+ * The wallet stores no vault: vault `i` is the PDA
+ * `[VAULT_SEED, wallet, i as u16 LE]` ({@link import('./wire-format/pda').deriveVaultPda}).
  */
 const OFFSET = {
   TAG: 0,
@@ -58,15 +59,13 @@ const OFFSET = {
   AUTHORITY_COUNT: 35,
   NONCE: 36,
   CREATION_SLOT: 44,
-  VAULT_BUMP: 52,
-  ROOT: 53,
-  AUTHORITY_EPOCH: 87,
-  PENDING_ROOT: 95,
-  RECOVERY_ETA: 129,
-  VAULT: 137,
-  RECOVERY_THRESHOLD: 169,
-  SESSION_NONCE: 170,
-  GOVERNANCE_NONCE: 178,
+  ROOT: 52,
+  AUTHORITY_EPOCH: 86,
+  PENDING_ROOT: 94,
+  RECOVERY_ETA: 128,
+  RECOVERY_THRESHOLD: 136,
+  SESSION_NONCE: 137,
+  GOVERNANCE_NONCE: 145,
 } as const
 
 /** `AuthoritySlot::EMPTY.sig_scheme`: the pending-root slot when no recovery is pending. */
@@ -122,7 +121,6 @@ export interface MachineWalletState {
    */
   governanceNonce: bigint
   creationSlot: bigint
-  vaultBump: number
   /**
    * The root authority: alone may remove authorities, change the threshold,
    * close the wallet and rotate the root. Always one of `authorities`.
@@ -138,8 +136,6 @@ export interface MachineWalletState {
   pendingRoot: WalletAuthoritySlot | null
   /** First slot `ExecuteRecovery` is accepted; always `0n` when `pendingRoot` is `null`. */
   recoveryEta: bigint
-  /** 32-byte vault PDA, recorded at creation. */
-  vault: Uint8Array
   /** Signatures `ProposeRecovery` needs; 0 = the spending `threshold`. */
   recoveryThreshold: number
   /** Every authority slot, in on-chain order. */
@@ -267,12 +263,10 @@ export function parseWalletState(data: Uint8Array): MachineWalletState {
     sessionNonce: view.getBigUint64(OFFSET.SESSION_NONCE, true),
     governanceNonce: view.getBigUint64(OFFSET.GOVERNANCE_NONCE, true),
     creationSlot: view.getBigUint64(OFFSET.CREATION_SLOT, true),
-    vaultBump: data[OFFSET.VAULT_BUMP],
     root,
     authorityEpoch: view.getBigUint64(OFFSET.AUTHORITY_EPOCH, true),
     pendingRoot,
     recoveryEta,
-    vault: data.slice(OFFSET.VAULT, OFFSET.VAULT + 32),
     recoveryThreshold,
     authorities,
   }

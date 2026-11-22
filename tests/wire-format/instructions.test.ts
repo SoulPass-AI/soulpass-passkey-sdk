@@ -4,7 +4,8 @@
  * Execute / ExecuteWithEphemeralSigners / ProvideWebAuthnEvidence
  * (`execute-ix.ts`) and CreateSession (`session.ts`).
  *
- * The six root/recovery/epoch vectors are pinned byte-for-byte against
+ * The six root/recovery/epoch vectors and Execute (disc 1, via
+ * `execute-ix.ts`) are pinned byte-for-byte against
  * `tests/fixtures/layout_kat.json`, a verbatim copy of the machine-wallet
  * program's vectors; the rest are pinned to the `instruction.rs` decoder's
  * exact-length checks.
@@ -14,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { Keypair } from '@solana/web3.js'
+import { Keypair, PublicKey } from '@solana/web3.js'
 import { bytesToHex as hex, hexToBytes } from '@noble/hashes/utils'
 import {
   ADD_AUTHORITY_ACCOUNTS,
@@ -72,7 +73,8 @@ function vector(name: string) {
   }
   const u64 = (n: string): bigint => new DataView(field(n).buffer, field(n).byteOffset).getBigUint64(0, true)
   const u8 = (n: string): number => field(n)[0]
-  return { v, field, u64, u8 }
+  const u16 = (n: string): number => new DataView(field(n).buffer, field(n).byteOffset).getUint16(0, true)
+  return { v, field, u64, u8, u16 }
 }
 
 function expectKat(name: string, data: Uint8Array, disc: number) {
@@ -137,6 +139,28 @@ describe('builders against layout_kat.json', () => {
   })
 })
 
+describe('buildExecuteIxData against layout_kat.json', () => {
+  it('ix_execute_disc1 (vault 3)', () => {
+    const { u64, u16, field } = vector('ix_execute_disc1')
+    expect(u16('vault_index_le')).toBe(3)
+    // The vector's lone account is remaining-accounts index 0, writable.
+    const account = new PublicKey(new Uint8Array(32).fill(0x77))
+    const data = buildExecuteIxData({
+      maxSlot: u64('max_slot_le'),
+      vaultIndex: u16('vault_index_le'),
+      innerInstructions: [
+        {
+          programId: new PublicKey(field('program_id')).toBase58(),
+          accounts: [{ pubkey: account.toBase58(), isWritable: true }],
+          data: field('data'),
+        },
+      ],
+      remainingAccounts: [{ pubkey: account, isWritable: true }],
+    })
+    expectKat('ix_execute_disc1', data, MachineWalletDisc.Execute)
+  })
+})
+
 describe('builders pinned to the decoder lengths', () => {
   const pk33 = new Uint8Array(33).fill(0x02)
   const key32 = new Uint8Array(32).fill(0x31)
@@ -151,11 +175,16 @@ describe('builders pinned to the decoder lengths', () => {
     expect(d.slice(10)).toEqual(pk33)
   })
 
-  it('CloseWallet: [2] max_slot destination(32) = 41 B', () => {
-    const d = buildCloseWalletIxData({ maxSlot: 7n, destination: key32 })
-    expect(d).toHaveLength(41)
+  it('CloseWallet: [2] max_slot vault_index(u16) destination(32) = 43 B', () => {
+    const d = buildCloseWalletIxData({ maxSlot: 7n, vaultIndex: 0x0203, destination: key32 })
+    expect(d).toHaveLength(43)
     expect(d[0]).toBe(2)
-    expect(d.slice(9)).toEqual(key32)
+    expect(view(d).getBigUint64(1, true)).toBe(7n)
+    expect(view(d).getUint16(9, true)).toBe(0x0203)
+    expect(d.slice(11)).toEqual(key32)
+    expect(() => buildCloseWalletIxData({ maxSlot: 7n, vaultIndex: 0x10000, destination: key32 })).toThrow(
+      /vaultIndex must be a u16/,
+    )
   })
 
   it('AdvanceNonce: [3] max_slot = 9 B', () => {
@@ -225,7 +254,7 @@ describe('builders pinned to the decoder lengths', () => {
       buildRemoveAuthorityIxData({ sigScheme: 0, pubkey: key32, newThreshold: 1, maxSlot: 1n }),
     ).toThrow(RangeError)
     expect(() => buildProposeRecoveryIxData({ sigScheme: 0, pubkey: key32, maxSlot: 1n })).toThrow(RangeError)
-    expect(() => buildCloseWalletIxData({ maxSlot: 1n, destination: pk33 })).toThrow(RangeError)
+    expect(() => buildCloseWalletIxData({ maxSlot: 1n, vaultIndex: 0, destination: pk33 })).toThrow(RangeError)
   })
 })
 
@@ -243,12 +272,13 @@ describe('buildSessionExecuteIxData', () => {
   it('is [5] || generation || u32 count || inner, the same inner encoding Execute uses', () => {
     const remainingAccounts = encodeRemainingAccounts(inner)
     const d = buildSessionExecuteIxData({ generation: 19n, innerInstructions: inner, remainingAccounts })
-    const exec = buildExecuteIxData({ maxSlot: 9n, innerInstructions: inner, remainingAccounts })
+    const exec = buildExecuteIxData({ maxSlot: 9n, vaultIndex: 0, innerInstructions: inner, remainingAccounts })
     expect(d[0]).toBe(MachineWalletDisc.SessionExecute)
     expect(new DataView(d.buffer, d.byteOffset).getUint32(9, true)).toBe(1)
-    // Execute is [1] || max_slot(8) || <same tail>; SessionExecute puts the generation there.
+    // Execute is [1] || max_slot(8) || vault_index(2) || <same tail>;
+    // SessionExecute carries only the generation (its vault is the session's).
     expect(new DataView(d.buffer, d.byteOffset).getBigUint64(1, true)).toBe(19n)
-    expect(d.slice(9)).toEqual(exec.slice(9))
+    expect(d.slice(9)).toEqual(exec.slice(11))
   })
 })
 
