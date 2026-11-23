@@ -41,7 +41,7 @@ main bundle):
 - **`./react`** — `SoulPassProvider` + `useSoulPass()`: owns a wallet
   instance, persists the connection to sessionStorage, restores on reload.
   `react` is an optional peer dependency.
-- **`./solana-adapter`** — `SoulPassWalletAdapter` + `deriveVaultPDA(walletPDA, vaultIndex)`
+- **`./solana-adapter`** — `SoulPassWalletAdapter`
   (the PDA validators are re-exported here for compatibility).
   `signTransaction()` throws by design: SoulPass signs-and-submits in one
   step; dApps use `sendTransaction`.
@@ -109,13 +109,18 @@ Every instruction-data builder takes one object parameter (`maxSlot`
 included) and validates widths and byte ranges, throwing `RangeError`.
 `buildCreateSessionIxData` and `hashSessionData` run `validateSessionParams`
 first, which reports faults in the program's order (decoder counts, then
-handler checks). `buildExecuteIxData` builds Execute (disc 1) when
-`ephemeralSignerBumps` is omitted and ExecuteWithEphemeralSigners (disc 16)
-for 1..=4 bumps; an empty array throws. Every vault-scoped builder and hash
-(Execute / disc 16, CloseWallet, CreateSession and their messages,
-`deriveVaultPda`) takes a required `vaultIndex` (u16) — no default;
-`MAIN_VAULT_INDEX` names the main account. SessionExecute carries none: its
-vault is the session's `vaultIndex`.
+handler checks). Execute and CloseWallet are encoded from one operation
+value — `encodeExecute` / `encodeCloseWallet` return the signed
+`operationHash`, the ix `data` and the vault (account 3) together, so the
+signed vault, the ix vault and the account cannot disagree; their separate
+message and data builders stay internal. `encodeExecute` builds Execute
+(disc 1) when `ephemeralSignerBumps` is omitted and ExecuteWithEphemeralSigners
+(disc 16) for 1..=4 bumps; an empty array throws. Every vault-scoped operation
+(Execute / disc 16, CloseWallet, CreateSession, `deriveVaultPda`) takes a
+required `vaultIndex` (u16) — no default; `MAIN_VAULT_INDEX` names the main
+account. SessionExecute carries none: its vault is the session's `vaultIndex`.
+PDA derivations return the branded key they prove (`VaultPdaKey`,
+`StatePdaKey`).
 
 **`./payments`** (with its hook, **`./payments-react`**) is an additive application layer above the
 chain-neutral payment wallet port. It owns canonical multichain PaymentIntent

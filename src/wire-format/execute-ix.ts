@@ -9,10 +9,13 @@
 
 import { MachineWalletDisc } from './disc';
 import { MAX_CLIENT_DATA_JSON_SIZE, MAX_INNER_INSTRUCTIONS } from './constants';
-import { encodeEphemeralBumps } from './operation-hash';
+import { computeExecuteEphemeralMessage, computeExecuteMessage, encodeEphemeralBumps } from './operation-hash';
 import type { InnerInstruction } from './inner-hash';
-import { accountFlags } from './inner-hash';
+import { accountFlags, computeInnerHash } from './inner-hash';
 import { u16LE, u32LE, u64LE, concatBytes } from './_bytes';
+import { deriveVaultPda, MACHINE_WALLET_PROGRAM_ID } from './pda';
+import type { FundsNonceBound } from './authority-messages';
+import type { VaultPdaKey } from '../types';
 import { PublicKey } from '@solana/web3.js';
 
 /**
@@ -75,9 +78,8 @@ export function buildEvidenceIxData(clientDataJSON: Uint8Array): Uint8Array {
 export function buildExecuteIxData(args: {
   maxSlot: bigint;
   /**
-   * The vault that signs the inner instructions (u16; `MAIN_VAULT_INDEX` for
-   * the main account). Account 3 of the ix must be `deriveVaultPda(wallet,
-   * vaultIndex)`, and the same index must have fed the signed message.
+   * The vault that signs the inner instructions (u16). Internal: {@link encodeExecute}
+   * feeds the same index to the signed message and account 3.
    */
   vaultIndex: number;
   innerInstructions: ReadonlyArray<InnerInstruction>;
@@ -103,6 +105,65 @@ export function buildExecuteIxData(args: {
     ...(ephemeral ? [encodeEphemeralBumps(ephemeralSignerBumps)] : []),
     encodeInnerInstructions(innerInstructions, remainingAccounts),
   ]);
+}
+
+/**
+ * One Execute (disc=1) or ExecuteWithEphemeralSigners (disc=16): the single
+ * value the signed message, the ix data and the ix accounts are all projected
+ * from by {@link encodeExecute}.
+ */
+export interface ExecuteOperation extends FundsNonceBound {
+  /** The vault that signs the inner instructions (u16; `MAIN_VAULT_INDEX` for the main account). */
+  vaultIndex: number;
+  /**
+   * 1..=64 inner instructions, ephemeral-signer accounts already flagged
+   * `isEphemeralSigner` — the hash and the encoded flags read the same list.
+   */
+  innerInstructions: ReadonlyArray<InnerInstruction>;
+  /** 1..=`MAX_EPHEMERAL_SIGNERS` (4) bumps selects disc=16; omit for disc=1 (empty throws). */
+  ephemeralSignerBumps?: Uint8Array;
+}
+
+/**
+ * Everything the chain recomputes from one {@link ExecuteOperation}. The ix is
+ * `keys = [instructions_sysvar, wallet (w), fee_payer (s, w), vault (w),
+ * ...remainingAccounts (w per entry)]` ({@link import('./instructions').EXECUTE_ACCOUNTS})
+ * with `data`; only the fee payer is the caller's.
+ */
+export interface EncodedExecute {
+  /** The WebAuthn challenge (`operation_hash`). */
+  operationHash: Uint8Array;
+  data: Uint8Array;
+  wallet: PublicKey;
+  /** Vault `vaultIndex` of `wallet` — account 3. */
+  vault: VaultPdaKey;
+  /** The keys tail, in the order the `index` bytes of `data` name them. */
+  remainingAccounts: RemainingAccount[];
+}
+
+/**
+ * Encode an Execute from one operation value, so the signed `vault_index`,
+ * the ix `vault_index`, account 3, the remaining-accounts order and the bumps
+ * cannot disagree — any disagreement is a transaction the chain rejects only
+ * after the passkey has signed it.
+ */
+export function encodeExecute(
+  op: ExecuteOperation,
+  programId: PublicKey = MACHINE_WALLET_PROGRAM_ID,
+): EncodedExecute {
+  const innerHash = computeInnerHash(op.innerInstructions);
+  const remainingAccounts = encodeRemainingAccounts(op.innerInstructions);
+  const { ephemeralSignerBumps } = op;
+  return {
+    operationHash:
+      ephemeralSignerBumps === undefined
+        ? computeExecuteMessage({ ...op, innerHash })
+        : computeExecuteEphemeralMessage({ ...op, ephemeralSignerBumps, innerHash }),
+    data: buildExecuteIxData({ ...op, remainingAccounts }),
+    wallet: op.walletPDA,
+    vault: deriveVaultPda(op.walletPDA, op.vaultIndex, programId).address,
+    remainingAccounts,
+  };
 }
 
 /**

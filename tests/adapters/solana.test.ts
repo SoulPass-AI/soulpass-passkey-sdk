@@ -1,10 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
 import { PublicKey } from '@solana/web3.js'
-import { SoulPassWalletAdapter, deriveVaultPDA } from '../../src/adapters/solana'
-import { asStatePdaKey } from '../../src/types'
-import { MAIN_VAULT_INDEX } from '../../src/wire-format/constants'
-import { deriveVaultPda } from '../../src/wire-format/pda'
+import { SoulPassWalletAdapter } from '../../src/adapters/solana'
 
 describe('SoulPassWalletAdapter', () => {
   it('has correct adapter metadata', () => {
@@ -22,16 +19,6 @@ describe('SoulPassWalletAdapter', () => {
     expect(typeof adapter.disconnect).toBe('function')
     expect(typeof adapter.signTransaction).toBe('function')
     expect(typeof adapter.signMessage).toBe('function')
-  })
-})
-
-describe('deriveVaultPDA', () => {
-  it('brands deriveVaultPda(wallet, index).address', () => {
-    const walletPDA = asStatePdaKey(new PublicKey(new Uint8Array(32).fill(0x21)))
-    for (const index of [MAIN_VAULT_INDEX, 3]) {
-      expect(deriveVaultPDA(walletPDA, index).equals(deriveVaultPda(walletPDA, index).address)).toBe(true)
-    }
-    expect(deriveVaultPDA(walletPDA, 0).equals(deriveVaultPDA(walletPDA, 1))).toBe(false)
   })
 })
 

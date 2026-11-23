@@ -22,10 +22,8 @@ import type {
   VaultPda,
   StatePda,
   StatePdaKey,
-  VaultPdaKey,
 } from '../types'
-import { asStatePdaKey, asVaultPdaKey } from '../types'
-import { deriveVaultPda } from '../wire-format/pda'
+import { asStatePdaKey } from '../types'
 
 // --- Trust-boundary validators ---
 //
@@ -33,13 +31,6 @@ import { deriveVaultPda } from '../wire-format/pda'
 // PDA that enters from an untrusted source through one of these before it
 // gets the brand.
 export { validateVaultPda, validateStatePda } from '../types'
-
-/** Vault `vaultIndex` of a wallet PDA, branded ({@link deriveVaultPda} at the
- * canonical bump). Pass `MAIN_VAULT_INDEX` (0) for the owner's main account.
- */
-export function deriveVaultPDA(walletPDA: StatePdaKey, vaultIndex: number): VaultPdaKey {
-  return asVaultPdaKey(deriveVaultPda(walletPDA, vaultIndex).address)
-}
 
 export const SoulPassWalletName = 'SoulPass' as WalletName<'SoulPass'>
 

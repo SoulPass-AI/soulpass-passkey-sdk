@@ -106,12 +106,7 @@ export {
   computeInnerHash,
 } from './wire-format/inner-hash'
 export type { InnerInstruction } from './wire-format/inner-hash'
-export {
-  EXECUTE_TAG,
-  EXECUTE_EPHEMERAL_TAG,
-  computeExecuteMessage,
-  computeExecuteEphemeralMessage,
-} from './wire-format/operation-hash'
+export { EXECUTE_TAG, EXECUTE_EPHEMERAL_TAG } from './wire-format/operation-hash'
 export {
   SIGNED_MESSAGE_ENVELOPE,
   deploymentDomain,
@@ -138,7 +133,6 @@ export {
   SET_RECOVERY_THRESHOLD_TAG,
   BUMP_EPOCH_TAG,
   computeCreateWalletMessage,
-  computeCloseWalletMessage,
   computeAdvanceNonceMessage,
   computeCreateSessionMessage,
   computeRevokeSessionMessage,
@@ -165,11 +159,11 @@ export type {
   MachineWalletTag,
 } from './wire-format/authority-messages'
 export {
-  buildExecuteIxData,
+  encodeExecute,
   buildEvidenceIxData,
   encodeRemainingAccounts,
 } from './wire-format/execute-ix'
-export type { RemainingAccount } from './wire-format/execute-ix'
+export type { ExecuteOperation, EncodedExecute, RemainingAccount } from './wire-format/execute-ix'
 export {
   GOVERNED_ACCOUNTS,
   ADD_AUTHORITY_ACCOUNTS,
@@ -183,7 +177,7 @@ export {
   CREATE_WALLET_ACCOUNTS,
   SESSION_EXECUTE_ACCOUNTS,
   buildCreateWalletIxData,
-  buildCloseWalletIxData,
+  encodeCloseWallet,
   buildAdvanceNonceIxData,
   buildSessionExecuteIxData,
   buildRevokeSessionIxData,
@@ -200,6 +194,7 @@ export {
   buildBumpEpochIxData,
   buildSetRecoveryThresholdIxData,
 } from './wire-format/instructions'
+export type { CloseWalletOperation } from './wire-format/instructions'
 export {
   CASH_MINT_POLICY_WIRE_LEN,
   CREATE_SESSION_ACCOUNTS,

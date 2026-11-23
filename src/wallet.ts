@@ -545,7 +545,7 @@ export class SoulPassWallet {
       transaction: uint8ArrayToBase64(serializedTx),
       ...this.signContext,
       // Omit when absent or empty: the popup then builds plain Execute (disc 1), and
-      // buildExecuteIxData throws on an empty ephemeralSignerBumps array.
+      // encodeExecute throws on an empty ephemeralSignerBumps array.
       ...(options?.ephemeralSignerBumps && options.ephemeralSignerBumps.length > 0
         ? { ephemeralSignerBumps: options.ephemeralSignerBumps }
         : {}),

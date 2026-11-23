@@ -15,9 +15,11 @@ import { keccak_256 } from '@noble/hashes/sha3';
 import { MACHINE_WALLET_PROGRAM_ADDRESS } from '../protocol';
 import { requireLength, u16LE } from './_bytes';
 import { AUTHORITY_PUBKEY_SIZE, SESSION_SEED, VAULT_SEED, WALLET_SEED } from './constants';
+import type { StatePdaKey, VaultPdaKey } from '../types';
 
-export interface ProgramAddress {
-  address: PublicKey;
+/** A derived PDA; `K` is the brand the derivation itself proves. */
+export interface ProgramAddress<K extends PublicKey = PublicKey> {
+  address: K;
   bump: number;
 }
 
@@ -36,12 +38,12 @@ export const MACHINE_WALLET_PROGRAM_ID = new PublicKey(MACHINE_WALLET_PROGRAM_AD
 export function deriveWalletPda(
   authority33: Uint8Array,
   programId: PublicKey = MACHINE_WALLET_PROGRAM_ID,
-): ProgramAddress {
+): ProgramAddress<StatePdaKey> {
   const [address, bump] = PublicKey.findProgramAddressSync(
     [WALLET_SEED_BYTES, keccak_256(requireLength(authority33, AUTHORITY_PUBKEY_SIZE, 'deriveWalletPda: authority'))],
     programId,
   );
-  return { address, bump };
+  return { address: address as StatePdaKey, bump };
 }
 
 /**
@@ -54,12 +56,12 @@ export function deriveVaultPda(
   wallet: PublicKey,
   vaultIndex: number,
   programId: PublicKey = MACHINE_WALLET_PROGRAM_ID,
-): ProgramAddress {
+): ProgramAddress<VaultPdaKey> {
   const [address, bump] = PublicKey.findProgramAddressSync(
     [VAULT_SEED_BYTES, wallet.toBytes(), u16LE(vaultIndex, 'deriveVaultPda: vaultIndex')],
     programId,
   );
-  return { address, bump };
+  return { address: address as VaultPdaKey, bump };
 }
 
 /** Session PDA for a wallet PDA and a 32-byte session authority (ed25519 pubkey). */

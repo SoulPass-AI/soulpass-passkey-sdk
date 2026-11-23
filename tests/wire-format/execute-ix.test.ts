@@ -4,8 +4,12 @@ import { Keypair, PublicKey } from '@solana/web3.js'
 import {
   buildEvidenceIxData,
   buildExecuteIxData,
+  encodeExecute,
   encodeRemainingAccounts,
 } from '../../src/wire-format/execute-ix'
+import { computeExecuteEphemeralMessage, computeExecuteMessage } from '../../src/wire-format/operation-hash'
+import { computeInnerHash } from '../../src/wire-format/inner-hash'
+import { deriveVaultPda } from '../../src/wire-format/pda'
 import { MachineWalletDisc } from '../../src/wire-format/disc'
 import type { InnerInstruction } from '../../src/wire-format/inner-hash'
 
@@ -249,5 +253,42 @@ describe('buildExecuteIxData', () => {
     expect(() => build([])).toThrow(RangeError)
     expect(() => build(Array(65).fill(one))).toThrow(RangeError)
     expect(() => build(Array(64).fill(one))).not.toThrow()
+  })
+})
+
+describe('encodeExecute', () => {
+  const inner: InnerInstruction[] = [
+    {
+      programId: Keypair.generate().publicKey.toBase58(),
+      accounts: [{ pubkey: Keypair.generate().publicKey.toBase58(), isWritable: true }],
+      data: new Uint8Array([1]),
+    },
+  ]
+  const op = {
+    walletPDA: Keypair.generate().publicKey,
+    creationSlot: 100n,
+    fundsNonce: 5n,
+    maxSlot: 200n,
+    deployment: 'devnet' as const,
+    vaultIndex: 3,
+    innerInstructions: inner,
+  }
+  const innerHash = computeInnerHash(inner)
+  const remainingAccounts = encodeRemainingAccounts(inner)
+
+  it('projects message, data and accounts from the one operation', () => {
+    const e = encodeExecute(op)
+    expect(e.operationHash).toEqual(computeExecuteMessage({ ...op, innerHash }))
+    expect(e.data).toEqual(buildExecuteIxData({ ...op, remainingAccounts }))
+    expect(e.wallet.equals(op.walletPDA)).toBe(true)
+    expect(e.vault.equals(deriveVaultPda(op.walletPDA, 3).address)).toBe(true)
+    expect(e.remainingAccounts).toEqual(remainingAccounts)
+  })
+
+  it('bumps select disc=16 in both the message and the data', () => {
+    const ephemeralSignerBumps = Uint8Array.of(255)
+    const e = encodeExecute({ ...op, ephemeralSignerBumps })
+    expect(e.operationHash).toEqual(computeExecuteEphemeralMessage({ ...op, ephemeralSignerBumps, innerHash }))
+    expect(e.data[0]).toBe(MachineWalletDisc.ExecuteWithEphemeralSigners)
   })
 })

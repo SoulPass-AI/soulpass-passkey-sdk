@@ -35,6 +35,7 @@ import {
   buildCancelRecoveryIxData,
   buildCloseSessionIxData,
   buildCloseWalletIxData,
+  encodeCloseWallet,
   buildCreateWalletIxData,
   buildExecuteRecoveryIxData,
   buildOwnerCloseSessionIxData,
@@ -48,6 +49,8 @@ import {
   buildSetThresholdIxData,
 } from '../../src/wire-format/instructions'
 import { buildExecuteIxData, encodeRemainingAccounts } from '../../src/wire-format/execute-ix'
+import { computeCloseWalletMessage } from '../../src/wire-format/authority-messages'
+import { deriveVaultPda } from '../../src/wire-format/pda'
 import { MachineWalletDisc } from '../../src/wire-format/disc'
 import type { InnerInstruction } from '../../src/wire-format/inner-hash'
 
@@ -297,5 +300,23 @@ describe('account tables', () => {
     expect(CLOSE_WALLET_ACCOUNTS).toEqual([...GOVERNED_ACCOUNTS, 'vault (w)', 'destination (w)', 'system_program'])
     expect(CREATE_WALLET_ACCOUNTS).toEqual(['instructions_sysvar', 'payer (s)', 'wallet (w)', 'system_program'])
     expect(SESSION_EXECUTE_ACCOUNTS).toEqual(['session (w)', 'wallet', 'authority (s)', 'vault (w)', '…remaining'])
+  })
+})
+
+describe('encodeCloseWallet', () => {
+  it('projects message, data and vault from the one operation', () => {
+    const op = {
+      walletPDA: Keypair.generate().publicKey,
+      creationSlot: 100n,
+      governanceNonce: 9n,
+      maxSlot: 200n,
+      deployment: 'devnet' as const,
+      vaultIndex: 3,
+      destination: Keypair.generate().publicKey.toBytes(),
+    }
+    const e = encodeCloseWallet(op)
+    expect(e.operationHash).toEqual(computeCloseWalletMessage(op))
+    expect(e.data).toEqual(buildCloseWalletIxData(op))
+    expect(e.vault.equals(deriveVaultPda(op.walletPDA, 3).address)).toBe(true)
   })
 })

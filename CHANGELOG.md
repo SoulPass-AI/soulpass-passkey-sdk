@@ -5,13 +5,18 @@
 与 machine-wallet 多 vault 协议逐字节对齐（三个 KAT 原样重拷）。破坏性变更，不保留旧形态。
 
 - **vault 按 u16 索引派生**：vault `i` = `find_program_address([machine_vault, wallet, i LE], program)`，
-  canonical bump。新增 `deriveVaultPda(wallet, vaultIndex)`（`./protocol`）与 `MAIN_VAULT_INDEX = 0`；
-  `deriveVaultPDA(walletPDA, vaultIndex)`（`./solana-adapter`）第二个参数由 `vaultBump` 改为 `vaultIndex`。
+  canonical bump。新增 `deriveVaultPda(wallet, vaultIndex)`（`./protocol`）与 `MAIN_VAULT_INDEX = 0`。
+  派生函数自己打品牌：`deriveVaultPda().address` 是 `VaultPdaKey`，`deriveWalletPda().address` 是 `StatePdaKey`；
+  删除 `./solana-adapter` 的 `deriveVaultPDA`（改用 `deriveVaultPda(wallet, i).address`）。
 - **钱包账户头 186 → 153 字节**：去掉 `vault_bump` 与 `vault`，`MachineWalletState` 删除 `vaultBump` / `vault`。
 - **会话账户头 109 → 112 字节**：`vault_index` u16 @109、该 vault 的 canonical bump u8 @111（合约用，SDK 不读），
   `SessionState` 新增 `vaultIndex`；`sessionAccountSize` = 852 + 32P + 96C（980..1588）。
-- **必填 `vaultIndex`（无默认值）**：`buildExecuteIxData`（disc 1/16）、`buildCloseWalletIxData`、
-  `computeExecuteMessage`、`computeExecuteEphemeralMessage`、`computeCloseWalletMessage`、
+- **Execute / CloseWallet 从一个操作值编码**：`encodeExecute(op: ExecuteOperation)` 一次产出
+  `{ operationHash, data, wallet, vault, remainingAccounts }`，`encodeCloseWallet(op)` 产出
+  `{ operationHash, data, vault }`；签名的 `vault_index`、ix 的 `vault_index`、账户 3、remaining 顺序与
+  bumps 同源，无法分叉。`computeExecuteMessage`、`computeExecuteEphemeralMessage`、`buildExecuteIxData`、
+  `computeCloseWalletMessage`、`buildCloseWalletIxData` 不再从 `./protocol` 导出。
+- **必填 `vaultIndex`（无默认值）**：`ExecuteOperation`、`CloseWalletOperation`、
   `SessionParams`（进入 `hashSessionData` 与 `buildCreateSessionIxData`）。SessionExecute 线格式不变。
 
 ## 0.6.0 — 2026-11-03（machine-wallet f3b7746：撤销与 recovery 否决不再被计数器抢先）

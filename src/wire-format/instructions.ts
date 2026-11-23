@@ -18,7 +18,10 @@ import { concatBytes, requireByte, requireLength, u16LE, u64LE } from './_bytes'
 import { MachineWalletDisc } from './disc';
 import { encodeInnerInstructions, type RemainingAccount } from './execute-ix';
 import type { InnerInstruction } from './inner-hash';
-import type { AuthorityKeyOperand } from './authority-messages';
+import { computeCloseWalletMessage, type AuthorityKeyOperand, type GovernanceNonceBound } from './authority-messages';
+import { deriveVaultPda, MACHINE_WALLET_PROGRAM_ID } from './pda';
+import type { VaultPdaKey } from '../types';
+import type { PublicKey } from '@solana/web3.js';
 
 const disc = (d: number): Uint8Array => Uint8Array.of(d);
 
@@ -126,7 +129,7 @@ export function buildCreateWalletIxData(args: {
 
 /**
  * CloseWallet (2): `[2] || max_slot || vault_index(u16 LE) || destination(32)`
- * — 43 B. Drains vault `vaultIndex` only (account 3 must be that vault).
+ * — 43 B. Internal: {@link encodeCloseWallet} pairs it with its message and vault.
  */
 export function buildCloseWalletIxData(args: { maxSlot: bigint; vaultIndex: number; destination: Uint8Array }): Uint8Array {
   return concatBytes([
@@ -135,6 +138,28 @@ export function buildCloseWalletIxData(args: { maxSlot: bigint; vaultIndex: numb
     u16LE(args.vaultIndex, 'vaultIndex'),
     requireLength(args.destination, 32, 'destination'),
   ]);
+}
+
+/** One CloseWallet: drains vault `vaultIndex` only, to `destination` (32 bytes). */
+export interface CloseWalletOperation extends GovernanceNonceBound {
+  vaultIndex: number;
+  destination: Uint8Array;
+}
+
+/**
+ * The signed message, ix data and vault (account 3 of {@link CLOSE_WALLET_ACCOUNTS})
+ * of one {@link CloseWalletOperation} — projected from the same value, so the
+ * signed vault, the ix vault and the drained account cannot disagree.
+ */
+export function encodeCloseWallet(
+  op: CloseWalletOperation,
+  programId: PublicKey = MACHINE_WALLET_PROGRAM_ID,
+): { operationHash: Uint8Array; data: Uint8Array; vault: VaultPdaKey } {
+  return {
+    operationHash: computeCloseWalletMessage(op),
+    data: buildCloseWalletIxData(op),
+    vault: deriveVaultPda(op.walletPDA, op.vaultIndex, programId).address,
+  };
 }
 
 /** AdvanceNonce (3): `[3] || max_slot` — 9 B. Accounts: {@link GOVERNED_ACCOUNTS}. */
