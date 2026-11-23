@@ -14,7 +14,7 @@
  * reads (`(w)` writable, `(s)` signer).
  */
 
-import { concatBytes, requireByte, requireLength, requireU16, u64LE } from './_bytes';
+import { concatBytes, requireByte, requireLength, u16LE, u64LE } from './_bytes';
 import { MachineWalletDisc } from './disc';
 import { encodeInnerInstructions, type RemainingAccount } from './execute-ix';
 import type { InnerInstruction } from './inner-hash';
@@ -132,7 +132,7 @@ export function buildCloseWalletIxData(args: { maxSlot: bigint; vaultIndex: numb
   return concatBytes([
     disc(MachineWalletDisc.CloseWallet),
     u64LE(args.maxSlot),
-    requireU16(args.vaultIndex, 'vaultIndex'),
+    u16LE(args.vaultIndex, 'vaultIndex'),
     requireLength(args.destination, 32, 'destination'),
   ]);
 }

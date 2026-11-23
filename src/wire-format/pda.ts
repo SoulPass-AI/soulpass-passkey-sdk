@@ -13,7 +13,7 @@
 import { PublicKey } from '@solana/web3.js';
 import { keccak_256 } from '@noble/hashes/sha3';
 import { MACHINE_WALLET_PROGRAM_ADDRESS } from '../protocol';
-import { requireLength, requireU16 } from './_bytes';
+import { requireLength, u16LE } from './_bytes';
 import { AUTHORITY_PUBKEY_SIZE, SESSION_SEED, VAULT_SEED, WALLET_SEED } from './constants';
 
 export interface ProgramAddress {
@@ -56,7 +56,7 @@ export function deriveVaultPda(
   programId: PublicKey = MACHINE_WALLET_PROGRAM_ID,
 ): ProgramAddress {
   const [address, bump] = PublicKey.findProgramAddressSync(
-    [VAULT_SEED_BYTES, wallet.toBytes(), requireU16(vaultIndex, 'deriveVaultPda: vaultIndex')],
+    [VAULT_SEED_BYTES, wallet.toBytes(), u16LE(vaultIndex, 'deriveVaultPda: vaultIndex')],
     programId,
   );
   return { address, bump };

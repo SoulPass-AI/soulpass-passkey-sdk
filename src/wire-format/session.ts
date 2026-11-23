@@ -13,7 +13,7 @@
  */
 
 import { keccak_256 } from '@noble/hashes/sha3';
-import { bytesEqual, concatBytes, isAllZero, requireByte, requireLength, requireU16, u16LE, u64LE } from './_bytes';
+import { bytesEqual, concatBytes, isAllZero, requireByte, requireLength, u16LE, u64LE } from './_bytes';
 import { MAX_ALLOWED_PROGRAMS, MAX_CASH_MINTS, SESSION_FLAGS_KNOWN, isNativeSolMint } from './constants';
 import { MachineWalletDisc } from './disc';
 import type { MachineWalletErrorName } from './errors';
@@ -107,7 +107,7 @@ export function validateSessionParams(p: SessionParams): void {
   requireByte(p.creator.sigScheme, 'creator.sigScheme');
   requireLength(p.creator.pubkey, 33, 'creator.pubkey');
   requireByte(p.flags, 'flags');
-  requireU16(p.vaultIndex, 'vaultIndex');
+  u16LE(p.vaultIndex, 'vaultIndex');
   p.allowedPrograms.forEach((program, i) => requireLength(program, 32, `allowedPrograms[${i}]`));
   p.cash.forEach((c, i) => requireLength(c.mint, 32, `cash[${i}].mint`));
 

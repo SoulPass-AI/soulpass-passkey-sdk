@@ -12,7 +12,7 @@ import { MAX_CLIENT_DATA_JSON_SIZE, MAX_INNER_INSTRUCTIONS } from './constants';
 import { encodeEphemeralBumps } from './operation-hash';
 import type { InnerInstruction } from './inner-hash';
 import { accountFlags } from './inner-hash';
-import { u16LE, u32LE, u64LE, concatBytes, requireU16 } from './_bytes';
+import { u16LE, u32LE, u64LE, concatBytes } from './_bytes';
 import { PublicKey } from '@solana/web3.js';
 
 /**
@@ -95,17 +95,14 @@ export function buildExecuteIxData(args: {
   ephemeralSignerBumps?: Uint8Array;
 }): Uint8Array {
   const { maxSlot, vaultIndex, innerInstructions, remainingAccounts, ephemeralSignerBumps } = args;
-  const vault = requireU16(vaultIndex, 'vaultIndex');
-  const head =
-    ephemeralSignerBumps === undefined
-      ? [Uint8Array.of(MachineWalletDisc.Execute), u64LE(maxSlot), vault]
-      : [
-          Uint8Array.of(MachineWalletDisc.ExecuteWithEphemeralSigners),
-          u64LE(maxSlot),
-          vault,
-          encodeEphemeralBumps(ephemeralSignerBumps),
-        ];
-  return concatBytes([...head, encodeInnerInstructions(innerInstructions, remainingAccounts)]);
+  const ephemeral = ephemeralSignerBumps !== undefined;
+  return concatBytes([
+    Uint8Array.of(ephemeral ? MachineWalletDisc.ExecuteWithEphemeralSigners : MachineWalletDisc.Execute),
+    u64LE(maxSlot),
+    u16LE(vaultIndex, 'vaultIndex'),
+    ...(ephemeral ? [encodeEphemeralBumps(ephemeralSignerBumps)] : []),
+    encodeInnerInstructions(innerInstructions, remainingAccounts),
+  ]);
 }
 
 /**

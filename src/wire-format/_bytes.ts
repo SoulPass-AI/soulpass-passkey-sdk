@@ -11,10 +11,10 @@
  * and the rest of `wire-format/` automatically follows.
  */
 
-/** Little-endian u16 (matches `u16::to_le_bytes` on chain). */
-export function u16LE(value: number): Uint8Array {
+/** Little-endian u16 (matches `u16::to_le_bytes` on chain); `label` names the field in the range error. */
+export function u16LE(value: number, label = 'u16LE: value'): Uint8Array {
   if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
-    throw new RangeError(`u16LE: value out of range: ${value}`);
+    throw new RangeError(`${label} must be a u16, got ${value}`);
   }
   const out = new Uint8Array(2);
   new DataView(out.buffer).setUint16(0, value, true);
@@ -55,14 +55,6 @@ export function requireByte(value: number, label: string): Uint8Array {
     throw new RangeError(`${label} must be a u8, got ${value}`);
   }
   return Uint8Array.of(value);
-}
-
-/** Validate and encode a u16 payload field (LE). */
-export function requireU16(value: number, label: string): Uint8Array {
-  if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
-    throw new RangeError(`${label} must be a u16, got ${value}`);
-  }
-  return u16LE(value);
 }
 
 /** Flat concat. Allocates exactly once — important on hot paths like inner_hash. */

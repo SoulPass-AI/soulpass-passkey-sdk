@@ -13,7 +13,7 @@
  * byte sequence.
  */
 
-import { concatBytes, requireLength, requireU16 } from './_bytes';
+import { concatBytes, requireLength, u16LE } from './_bytes';
 import { MAX_EPHEMERAL_SIGNERS } from './constants';
 import { hashWalletOp, MACHINE_WALLET_TAGS, type FundsNonceBound } from './authority-messages';
 
@@ -46,7 +46,7 @@ export function computeExecuteMessage(
     EXECUTE_TAG,
     args,
     args.fundsNonce,
-    requireU16(args.vaultIndex, 'vaultIndex'),
+    u16LE(args.vaultIndex, 'vaultIndex'),
     requireLength(args.innerHash, 32, 'innerHash'),
   );
 }
@@ -69,7 +69,7 @@ export function computeExecuteEphemeralMessage(
     EXECUTE_EPHEMERAL_TAG,
     args,
     args.fundsNonce,
-    requireU16(args.vaultIndex, 'vaultIndex'),
+    u16LE(args.vaultIndex, 'vaultIndex'),
     encodeEphemeralBumps(args.ephemeralSignerBumps),
     requireLength(args.innerHash, 32, 'innerHash'),
   );

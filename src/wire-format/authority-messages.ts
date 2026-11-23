@@ -30,7 +30,7 @@
  */
 
 import type { PublicKey } from '@solana/web3.js';
-import { requireByte, requireLength, requireU16, u64LE } from './_bytes';
+import { requireByte, requireLength, u16LE, u64LE } from './_bytes';
 import { hashSignedMessage, type MachineWalletDeployment } from './signed-message';
 
 const encoder = new TextEncoder();
@@ -189,7 +189,7 @@ export function computeCloseWalletMessage(
     CLOSE_WALLET_TAG,
     args,
     args.governanceNonce,
-    requireU16(args.vaultIndex, 'vaultIndex'),
+    u16LE(args.vaultIndex, 'vaultIndex'),
     requireLength(args.destination, 32, 'destination'),
   );
 }

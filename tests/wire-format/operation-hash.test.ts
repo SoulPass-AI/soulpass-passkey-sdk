@@ -23,32 +23,23 @@ const VALID_INNER_HASH = new Uint8Array(32).fill(0xaa)
 const DEPLOYMENT = 'devnet' as const
 
 describe('computeExecuteMessage', () => {
+  const base = {
+    walletPDA,
+    creationSlot: 100n,
+    fundsNonce: 5n,
+    maxSlot: 200n,
+    vaultIndex: 0,
+    innerHash: VALID_INNER_HASH,
+    deployment: DEPLOYMENT,
+  }
+
   it('produces a 32-byte hash and is deterministic', () => {
-    const args = {
-      walletPDA,
-      creationSlot: 100n,
-      fundsNonce: 5n,
-      maxSlot: 200n,
-      vaultIndex: 0,
-      innerHash: VALID_INNER_HASH,
-      deployment: DEPLOYMENT,
-    }
-    const a = computeExecuteMessage(args)
-    const b = computeExecuteMessage(args)
+    const a = computeExecuteMessage(base)
     expect(a.length).toBe(32)
-    expect(a).toEqual(b)
+    expect(a).toEqual(computeExecuteMessage(base))
   })
 
   it('rotates on every input field — avalanche guard', () => {
-    const base = {
-      walletPDA,
-      creationSlot: 100n,
-      fundsNonce: 5n,
-      maxSlot: 200n,
-      vaultIndex: 0,
-      innerHash: VALID_INNER_HASH,
-      deployment: DEPLOYMENT,
-    }
     const a = computeExecuteMessage(base)
     expect(computeExecuteMessage({ ...base, creationSlot: 101n })).not.toEqual(a)
     expect(computeExecuteMessage({ ...base, fundsNonce: 6n })).not.toEqual(a)
@@ -63,32 +54,12 @@ describe('computeExecuteMessage', () => {
   })
 
   it('rejects innerHash != 32 bytes — wrong length is always a wrong hash', () => {
-    expect(() =>
-      computeExecuteMessage({
-        walletPDA,
-        creationSlot: 0n,
-        fundsNonce: 0n,
-        maxSlot: 0n,
-        vaultIndex: 0,
-        innerHash: new Uint8Array(31),
-        deployment: DEPLOYMENT,
-      }),
-    ).toThrow(/32 bytes/)
+    expect(() => computeExecuteMessage({ ...base, innerHash: new Uint8Array(31) })).toThrow(/32 bytes/)
   })
 
   it('rejects a vaultIndex outside u16', () => {
     for (const vaultIndex of [-1, 0x10000]) {
-      expect(() =>
-        computeExecuteMessage({
-          walletPDA,
-          creationSlot: 0n,
-          fundsNonce: 0n,
-          maxSlot: 0n,
-          vaultIndex,
-          innerHash: VALID_INNER_HASH,
-          deployment: DEPLOYMENT,
-        }),
-      ).toThrow(/vaultIndex must be a u16/)
+      expect(() => computeExecuteMessage({ ...base, vaultIndex })).toThrow(/vaultIndex must be a u16/)
     }
   })
 
