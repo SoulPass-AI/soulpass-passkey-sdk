@@ -5,7 +5,7 @@ import {
   type SignChannelResult,
 } from '../src/sign-channel'
 import { deriveApiUrl } from '../src/matrix-http'
-import type { VaultPda } from '../src/types'
+import type { StatePda, VaultPda } from '../src/types'
 import { CHANNEL_ID_RE, jsonResponse } from './helpers'
 
 afterEach(() => {
@@ -45,7 +45,8 @@ describe('SignChannelClient.putPayload', () => {
     const client = new SignChannelClient('https://api.soulpass.ai/api')
     const delivered = await client.putPayload('c'.repeat(22), {
       transaction: 'AQID',
-      walletAddress: 'VauLt111' as VaultPda,
+      walletAddress: 'StaTe111' as StatePda,
+      vaultIndex: 0,
       network: 'mainnet-beta',
     })
     expect(delivered).toBe(true)
@@ -56,6 +57,21 @@ describe('SignChannelClient.putPayload', () => {
     const body = JSON.parse(init.body as string)
     expect(body.channelId).toBe('c'.repeat(22))
     expect(body.transaction).toBe('AQID')
+    expect(body.walletAddress).toBe('StaTe111')
+    expect(body.vaultIndex).toBe(0)
+  })
+  it('only accepts the wallet identity — a vault is a type error', () => {
+    const client = new SignChannelClient('https://api.soulpass.ai/api')
+    // Type-level only: never awaited, so nothing is sent.
+    const typeOnly = () =>
+      client.putPayload('c'.repeat(22), {
+        transaction: 'AQID',
+        // @ts-expect-error — a vault cannot stand in for the wallet (state PDA).
+        walletAddress: 'VauLt111' as VaultPda,
+        vaultIndex: 0,
+        network: 'mainnet-beta',
+      })
+    expect(typeof typeOnly).toBe('function')
   })
   it('swallows network failures and reports the mailbox as undelivered', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
@@ -63,7 +79,8 @@ describe('SignChannelClient.putPayload', () => {
     await expect(
       client.putPayload('c'.repeat(22), {
         transaction: 'AQID',
-        walletAddress: 'VauLt111' as VaultPda,
+        walletAddress: 'StaTe111' as StatePda,
+        vaultIndex: 0,
         network: 'mainnet-beta',
       }),
     ).resolves.toBe(false)

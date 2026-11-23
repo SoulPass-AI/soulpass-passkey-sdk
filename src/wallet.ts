@@ -21,6 +21,7 @@ import type {
   StatePda,
 } from './types'
 import { validateStatePda, validateVaultPda } from './types'
+import { MAIN_VAULT_INDEX } from './wire-format/constants'
 import type {
   PaymentAccount,
   PaymentAuthorizationSession,
@@ -523,9 +524,10 @@ export class SoulPassWallet {
     if (!this._connected) throw new SoulPassError('NOT_CONNECTED', 'Wallet not connected')
   }
 
+  /** Sign requests name the wallet by its identity (state PDA), never a vault. */
   private get signContext() {
     return {
-      walletAddress: this._walletAddress!,
+      walletAddress: this._accountAddress!,
       network: this.config.network,
     }
   }
@@ -544,6 +546,8 @@ export class SoulPassWallet {
     return {
       transaction: uint8ArrayToBase64(serializedTx),
       ...this.signContext,
+      // The dApp-facing `walletAddress` / `publicKey` is the main vault, so that is the vault moved.
+      vaultIndex: MAIN_VAULT_INDEX,
       // Omit when absent or empty: the popup then builds plain Execute (disc 1), and
       // encodeExecute throws on an empty ephemeralSignerBumps array.
       ...(options?.ephemeralSignerBumps && options.ephemeralSignerBumps.length > 0

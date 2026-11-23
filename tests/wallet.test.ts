@@ -147,8 +147,25 @@ describe('SoulPassWallet', () => {
       // Popup boots → SDK flushes the queued SIGN_TRANSACTION message.
       getOnMessage()?.({ type: 'READY' })
       expect(sendSpy).toHaveBeenCalledTimes(1)
-      const message = sendSpy.mock.calls[0][0] as { type: string }
+      const message = sendSpy.mock.calls[0][0] as { type: string; payload: Record<string, unknown> }
       expect(message.type).toBe('SIGN_TRANSACTION')
+      // The wallet is named by its identity (state PDA), never the vault; the vault moved is an index.
+      expect(message.payload).toEqual({
+        transaction: 'AQID',
+        walletAddress: TEST_STATE,
+        vaultIndex: 0,
+        network: 'devnet',
+      })
+    })
+
+    it('SIGN_MESSAGE names the wallet by its state PDA', () => {
+      const w = connected()
+      const { sendSpy, getOnMessage } = setupPopupSpies(w)
+      void w.beginSignMessage().send(new Uint8Array([1, 2, 3]))
+      getOnMessage()?.({ type: 'READY' })
+      const message = sendSpy.mock.calls[0][0] as { type: string; payload: Record<string, unknown> }
+      expect(message.type).toBe('SIGN_MESSAGE')
+      expect(message.payload).toEqual({ message: 'AQID', walletAddress: TEST_STATE, network: 'devnet' })
     })
 
     it('sends immediately when send() is called after popup READY', () => {

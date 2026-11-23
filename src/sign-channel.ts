@@ -9,8 +9,9 @@
  *
  * The payload PUT is anonymous by design: third-party productTypes no longer
  * receive an access token at connect time, so the channelId itself is the
- * capability (128-bit CSPRNG). It carries no secrets — a compiled transaction
- * and public addresses. The requesting origin is stamped server-side from the
+ * capability (128-bit CSPRNG). It carries no secrets — a compiled transaction,
+ * the wallet's identity (state PDA) and the index of the vault it moves; the
+ * app derives that vault itself rather than trusting one from the dApp. The requesting origin is stamped server-side from the
  * HTTP Origin header; nothing this client claims about origin is trusted.
  */
 import { base64urlNoPad } from './encoding'
@@ -40,7 +41,8 @@ export function generateChannelId(): string {
  * The relay mirrors the popup payload verbatim, so it reuses the popup's own
  * payload type — one definition means a new SIGN_TRANSACTION field can't
  * reach the popup leg while silently missing the relay leg, and the relay
- * can't accept branded values (VaultPda, SoulPassNetwork) the popup rejects.
+ * can't accept branded values (StatePda, SoulPassNetwork) the popup rejects —
+ * in particular a vault cannot stand in for the wallet identity.
  * `productType` is the only relay-side addition.
  */
 export type SignChannelPayloadInput = SDKSignTransactionMessage['payload'] & {

@@ -21,6 +21,11 @@
   畸形数据抛 `Error`。中继侧（matrix-contract sponsor）据此读载荷，不再手写偏移。
 - **必填 `vaultIndex`（无默认值）**：`ExecuteOperation`、`CloseWalletOperation`、
   `SessionParams`（进入 `hashSessionData` 与 `buildCreateSessionIxData`）。SessionExecute 线格式不变。
+- **签名请求以钱包身份命名钱包**：`SIGN_TRANSACTION` / `SIGN_MESSAGE` 载荷与中继 `SignChannelPayloadInput`
+  的 `walletAddress` 改为 MachineWallet state PDA（`StatePda`，类型上不接受 vault），`SIGN_TRANSACTION`
+  新增必填 `vaultIndex`（u16，当前恒为 `MAIN_VAULT_INDEX`）。签名端（popup / iOS）只认自己的钱包 PDA，
+  自行从 `(walletAddress, vaultIndex)` 派生要展示和签的 vault，不再信任 dApp 给的 vault 地址。
+  `SoulPassWallet.walletAddress` / `publicKey` 仍是主 vault（收款地址），不变。
 
 ## 0.6.0 — 2026-11-03（machine-wallet f3b7746：撤销与 recovery 否决不再被计数器抢先）
 

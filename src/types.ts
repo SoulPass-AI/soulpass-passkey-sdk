@@ -189,8 +189,15 @@ export interface SDKSignTransactionMessage {
   payload: {
     /** Base64-serialized v1 transaction with inline accounts. */
     transaction: string
-    /** Vault PDA base58 — the popup derives state PDA / authorities from this. */
-    walletAddress: VaultPda
+    /**
+     * MachineWallet state PDA — the wallet's identity, never a vault. The
+     * signer accepts the request only for its own wallet and derives the
+     * vault it shows and signs for from `(walletAddress, vaultIndex)`; a
+     * vault address from the dApp is never trusted.
+     */
+    walletAddress: StatePda
+    /** The vault the transaction moves (u16; `MAIN_VAULT_INDEX` today). */
+    vaultIndex: number
     /** Forwarded from SDK config so the popup picks the right RPC */
     network: SoulPassNetwork
     /**
@@ -221,7 +228,8 @@ export interface SDKSignMessageMessage {
   payload: {
     /** base64 message bytes */
     message: string
-    walletAddress: VaultPda
+    /** MachineWallet state PDA — the wallet's identity, never a vault. */
+    walletAddress: StatePda
     network: SoulPassNetwork
   }
 }
