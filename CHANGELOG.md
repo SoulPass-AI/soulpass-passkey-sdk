@@ -1,6 +1,6 @@
 # Changelog
 
-## 未发布（machine-wallet 多 vault）
+## 0.7.0 — 2026-11-23（machine-wallet 多 vault）
 
 与 machine-wallet 多 vault 协议逐字节对齐（三个 KAT 原样重拷）。破坏性变更，不保留旧形态。
 
