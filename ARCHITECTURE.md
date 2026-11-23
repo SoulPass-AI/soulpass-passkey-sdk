@@ -82,8 +82,9 @@ field, no older layout to fall back to:
   `parseWalletState` accepts exactly `walletAccountSize(count)` bytes and
   rejects what the program's validating `deserialize` rejects (a pending root
   with eta 0 is accepted, as on chain). Offsets: `src/wallet-state.ts`.
-- **Session (`'T'`, 0x54)** — a 111-byte header (`vault_index` u16 @109: the
-  one vault the session may move, fixed across renewals; `generation` @101, the
+- **Session (`'T'`, 0x54)** — a 112-byte header (`vault_index` u16 @109: the
+  one vault the session may move, fixed across renewals, and its canonical bump
+  @111, which only the program reads; `generation` @101, the
   post-increment funds nonce of the CreateSession that made it; session-key
   instructions bind it, the owner's RevokeSession binds `created_slot` @66
   instead (a renewal keeps it), and a renewing
@@ -91,7 +92,7 @@ field, no older layout to fall back to:
   programs, the mandate hash, the creator slot, the rent payer, the 96-byte cash
   budgets (`cashCredit` u64 @88: NET_EXPOSURE proceeds beyond outstanding
   principal, ≤ `lifetimeCap`, never nonzero together with `lifetimeSpent`) and
-  a 16-slot sleeve (`sessionAccountSize(P, C)` = 851 + 32P + 96C, 979..1587).
+  a 16-slot sleeve (`sessionAccountSize(P, C)` = 852 + 32P + 96C, 980..1588).
   `parseSessionState` accepts only `'T'` at exact length and mirrors the
   program's credit invariants. `isSessionLive` mirrors
   `SessionExecute`: not revoked, `slot <= expiry_slot` (live through the

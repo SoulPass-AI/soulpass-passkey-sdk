@@ -24,8 +24,9 @@
  * | 100               | allowed_programs_count | u8 (P, 1..=8)       |
  * | 101               | generation             | u64                 |
  * | 109               | vault_index            | u16                 |
- * | 111               | allowed_programs       | [[u8; 32]; P]       |
- * | B = 111 + 32P     | mandate_hash           | [u8; 32]            |
+ * | 111               | vault_bump             | u8 (not read here)  |
+ * | 112               | allowed_programs       | [[u8; 32]; P]       |
+ * | B = 112 + 32P     | mandate_hash           | [u8; 32]            |
  * | B + 32            | creator                | AuthoritySlot       |
  * | B + 66            | rent_payer             | [u8; 32]            |
  * | B + 98            | cash_count             | u8 (C, 0..=5)       |
@@ -134,7 +135,7 @@ const OFFSET = {
   VAULT_INDEX: 109,
 } as const;
 
-/** Offsets inside the budget segment, relative to `111 + 32P`. */
+/** Offsets inside the budget segment, relative to `112 + 32P`. */
 const BUDGET = {
   MANDATE: 0,
   CREATOR: 32,
@@ -147,7 +148,7 @@ const budgetOffset = (programCount: number): number => SESSION_HEADER_SIZE + pro
 
 /**
  * Exact account length for `programCount` allowed programs and `cashCount`
- * cash entries (`SessionState::size`): `851 + 32P + 96C`.
+ * cash entries (`SessionState::size`): `852 + 32P + 96C`.
  */
 export function sessionAccountSize(programCount: number, cashCount: number): number {
   if (!Number.isInteger(programCount) || programCount < 0 || programCount > MAX_ALLOWED_PROGRAMS) {

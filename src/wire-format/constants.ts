@@ -66,7 +66,7 @@ export const AUTHORITY_SLOT_SIZE = 1 + AUTHORITY_PUBKEY_SIZE;
 /** `MachineWallet::HEADER_SIZE`. */
 export const WALLET_HEADER_SIZE = 153;
 /** `SessionState::HEADER_SIZE`. */
-export const SESSION_HEADER_SIZE = 111;
+export const SESSION_HEADER_SIZE = 112;
 /** `CashMintState::SIZE`. */
 export const CASH_MINT_STATE_SIZE = 96;
 /** `SleeveEntry::SIZE`. */

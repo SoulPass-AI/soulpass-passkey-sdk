@@ -4,9 +4,9 @@
  * (`tests/fixtures/layout_kat.json`, a verbatim copy of the program's file).
  *
  * Offsets are written out from `state.rs` (`SessionState`) for P = 2, C = 2:
- * generation at 101, vault_index at 109; budget segment at 111 + 2×32 = 175
- * → mandate 175, creator 207, rent_payer 241, cash_count 273, cash 274
- * (96 B each), sleeve_count 466, sleeve 467.
+ * generation at 101, vault_index at 109, vault_bump at 111; budget segment at
+ * 112 + 2×32 = 176 → mandate 176, creator 208, rent_payer 242, cash_count 274,
+ * cash 275 (96 B each), sleeve_count 467, sleeve 468.
  */
 
 import { readFileSync } from 'node:fs'
@@ -53,20 +53,20 @@ const OFF = {
   REVOKED: 82,
   FLAGS: 99,
   PROGRAMS_COUNT: 100,
-  PROGRAM_1: 143,
-  CREATOR: 207,
-  CASH_COUNT: 273,
-  CASH_0: 274,
-  CASH_1: 370,
-  SLEEVE_COUNT: 466,
-  SLEEVE_1: 507,
+  PROGRAM_1: 144,
+  CREATOR: 208,
+  CASH_COUNT: 274,
+  CASH_0: 275,
+  CASH_1: 371,
+  SLEEVE_COUNT: 467,
+  SLEEVE_1: 508,
 } as const
 
 describe('parseSessionState — layout KAT (program bytes)', () => {
   it('decodes session_t_p2_sol_cash1_credit1_sleeve1_passkey_creator field-for-field', () => {
     const data = sessionBytes()
-    expect(data).toHaveLength(1107)
-    expect(sessionAccountSize(2, 2)).toBe(1107)
+    expect(data).toHaveLength(1108)
+    expect(sessionAccountSize(2, 2)).toBe(1108)
 
     const s: SessionState = parseSessionState(data)
     expect(s.bump).toBe(0xfc)
@@ -109,9 +109,9 @@ describe('parseSessionState — layout KAT (program bytes)', () => {
     expect(s.sleeve[0]).toEqual({ mint: sleeve.slice(0, 32), amount: u64(sleeve, 32) })
   })
 
-  it('sessionAccountSize is 851 + 32P + 96C', () => {
-    expect(sessionAccountSize(1, 1)).toBe(979)
-    expect(sessionAccountSize(8, 5)).toBe(1587)
+  it('sessionAccountSize is 852 + 32P + 96C', () => {
+    expect(sessionAccountSize(1, 1)).toBe(980)
+    expect(sessionAccountSize(8, 5)).toBe(1588)
   })
 
   it('sessionSolPolicy returns the all-zero-mint entry', () => {
@@ -176,7 +176,7 @@ describe('sessionStateValidation', () => {
   })
 
   it('rejects a repeated allowed program', () => {
-    rejects((d) => void d.copyWithin(OFF.PROGRAM_1, 111, 143), /allowed program/i)
+    rejects((d) => void d.copyWithin(OFF.PROGRAM_1, 112, 144), /allowed program/i)
   })
 
   it('rejects an unknown creator sig_scheme', () => {

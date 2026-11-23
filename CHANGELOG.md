@@ -8,8 +8,8 @@
   canonical bump。新增 `deriveVaultPda(wallet, vaultIndex)`（`./protocol`）与 `MAIN_VAULT_INDEX = 0`；
   `deriveVaultPDA(walletPDA, vaultIndex)`（`./solana-adapter`）第二个参数由 `vaultBump` 改为 `vaultIndex`。
 - **钱包账户头 186 → 153 字节**：去掉 `vault_bump` 与 `vault`，`MachineWalletState` 删除 `vaultBump` / `vault`。
-- **会话账户头 109 → 111 字节**：`vault_index` u16 @109，`SessionState` 新增 `vaultIndex`；
-  `sessionAccountSize` = 851 + 32P + 96C。
+- **会话账户头 109 → 112 字节**：`vault_index` u16 @109、该 vault 的 canonical bump u8 @111（合约用，SDK 不读），
+  `SessionState` 新增 `vaultIndex`；`sessionAccountSize` = 852 + 32P + 96C（980..1588）。
 - **必填 `vaultIndex`（无默认值）**：`buildExecuteIxData`（disc 1/16）、`buildCloseWalletIxData`、
   `computeExecuteMessage`、`computeExecuteEphemeralMessage`、`computeCloseWalletMessage`、
   `SessionParams`（进入 `hashSessionData` 与 `buildCreateSessionIxData`）。SessionExecute 线格式不变。
