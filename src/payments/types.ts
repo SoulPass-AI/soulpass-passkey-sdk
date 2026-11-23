@@ -7,7 +7,6 @@
  * `@soulpass/passkey-sdk/payments` stays a single import site for merchants.
  */
 import type {
-  PaymentAmount,
   PaymentAuthorizationSession,
   PaymentIntent,
   PaymentExecution,
