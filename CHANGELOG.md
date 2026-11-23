@@ -16,6 +16,9 @@
   `{ operationHash, data, vault }`；签名的 `vault_index`、ix 的 `vault_index`、账户 3、remaining 顺序与
   bumps 同源，无法分叉。`computeExecuteMessage`、`computeExecuteEphemeralMessage`、`buildExecuteIxData`、
   `computeCloseWalletMessage`、`buildCloseWalletIxData` 不再从 `./protocol` 导出。
+- **新增与编码器配对的解码器**（`./protocol`）：`decodeExecuteIxData`（disc 1 / 16）、
+  `decodeSessionExecuteIxData`、`decodeCreateSessionIxData`，逐条对齐链上 `instruction.rs` 解码器（另拒空 inner），
+  畸形数据抛 `Error`。中继侧（matrix-contract sponsor）据此读载荷，不再手写偏移。
 - **必填 `vaultIndex`（无默认值）**：`ExecuteOperation`、`CloseWalletOperation`、
   `SessionParams`（进入 `hashSessionData` 与 `buildCreateSessionIxData`）。SessionExecute 线格式不变。
 

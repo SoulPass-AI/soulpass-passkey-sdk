@@ -165,6 +165,17 @@ export {
 } from './wire-format/execute-ix'
 export type { ExecuteOperation, EncodedExecute, RemainingAccount } from './wire-format/execute-ix'
 export {
+  decodeExecuteIxData,
+  decodeSessionExecuteIxData,
+  decodeCreateSessionIxData,
+} from './wire-format/decode-ix'
+export type {
+  DecodedAccountEntry,
+  DecodedInnerInstruction,
+  DecodedExecute,
+  DecodedSessionExecute,
+} from './wire-format/decode-ix'
+export {
   GOVERNED_ACCOUNTS,
   ADD_AUTHORITY_ACCOUNTS,
   REMOVE_AUTHORITY_ACCOUNTS,
