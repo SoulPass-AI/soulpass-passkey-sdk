@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — 未发布（machine-wallet 60c9306：SessionExecute 带余额约束）
+
+`layout_kat.json` 原样重拷。破坏性变更，旧布局链上已拒（invalid instruction data）。
+
+- **`buildSessionExecuteIxData` 必须传 `bounds`**：布局改为 `[5] | generation | bounds | inner_count | inner`，
+  约束段与 ExecuteBounded 逐字节一致、语义一致（`encodeBalanceBounds` / `swapBalanceBounds` 共用）。
+  不点名的 mint 不得减少：空约束只能收不能付。
+- `decodeSessionExecuteIxData` 返回 `bounds`。
+
 ## 0.8.0 — 2026-11-28（machine-wallet 8f74a45：ExecuteBounded）
 
 与 machine-wallet ExecuteBounded（disc 25）逐字节对齐；`signed_message_kat.json` 与 `layout_kat.json` 原样重拷（60 条签名向量）。

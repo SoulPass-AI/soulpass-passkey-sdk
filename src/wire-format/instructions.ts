@@ -16,6 +16,7 @@
 
 import { concatBytes, requireByte, requireLength, u16LE, u64LE } from './_bytes';
 import { MachineWalletDisc } from './disc';
+import { encodeBalanceBounds, type BalanceBound } from './balance-bounds';
 import { encodeInnerInstructions, type RemainingAccount } from './execute-ix';
 import type { InnerInstruction } from './inner-hash';
 import { computeCloseWalletMessage, type AuthorityKeyOperand, type GovernanceNonceBound } from './authority-messages';
@@ -168,21 +169,26 @@ export function buildAdvanceNonceIxData(args: { maxSlot: bigint }): Uint8Array {
 }
 
 /**
- * SessionExecute (5): `[5] || generation(u64 LE) || inner_count(u32 LE) ||
+ * SessionExecute (5): `[5] || generation(u64 LE) || bounds || inner_count(u32 LE) ||
  * inner ixs` — the same inner encoding as Execute, with no max_slot (the
  * session key signs the transaction itself). `generation` is the session's
  * `SessionState.generation`; a mismatch fails with 76
  * `SessionGenerationMismatch` (the grant changed — never refresh it and re-sign
- * the old intent). Pass the same `remainingAccounts` as the ix keys tail.
+ * the old intent). `bounds` is ExecuteBounded's section with its meaning
+ * (`swapBalanceBounds` for a swap): the chain holds the vault to them after
+ * the CPI (78 `BalanceBoundViolated`), and a mint not named may not fall — no
+ * bounds, no spending. Pass the same `remainingAccounts` as the ix keys tail.
  */
 export function buildSessionExecuteIxData(args: {
   generation: bigint;
+  bounds: ReadonlyArray<BalanceBound>;
   innerInstructions: ReadonlyArray<InnerInstruction>;
   remainingAccounts: ReadonlyArray<RemainingAccount>;
 }): Uint8Array {
   return concatBytes([
     disc(MachineWalletDisc.SessionExecute),
     u64LE(args.generation),
+    encodeBalanceBounds(args.bounds),
     encodeInnerInstructions(args.innerInstructions, args.remainingAccounts),
   ]);
 }

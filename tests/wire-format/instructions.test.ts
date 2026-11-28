@@ -52,6 +52,8 @@ import { buildExecuteIxData, encodeRemainingAccounts } from '../../src/wire-form
 import { computeCloseWalletMessage } from '../../src/wire-format/authority-messages'
 import { deriveVaultPda } from '../../src/wire-format/pda'
 import { MachineWalletDisc } from '../../src/wire-format/disc'
+import { swapBalanceBounds } from '../../src/wire-format/balance-bounds'
+import { WSOL_MINT } from '../../src/wire-format/constants'
 import type { InnerInstruction } from '../../src/wire-format/inner-hash'
 
 interface LayoutVector {
@@ -185,6 +187,24 @@ describe('buildExecuteIxData against layout_kat.json', () => {
     })
     expectKat('ix_execute_bounded_disc25', data, MachineWalletDisc.ExecuteBounded)
   })
+
+  it('ix_session_execute_disc5 (generation 19, the same two bounds)', () => {
+    const { u64, field } = vector('ix_session_execute_disc5')
+    // The vector's one account is pool index 0: the program id itself, listed writable.
+    const programId = new PublicKey(field('program_id'))
+    const data = buildSessionExecuteIxData({
+      generation: u64('generation_le'),
+      bounds: [
+        { mint: field('bound_0_mint'), kind: 0, amount: u64('bound_0_amount_le') },
+        { mint: field('bound_1_mint (SOL)'), kind: 1, amount: u64('bound_1_amount_le') },
+      ],
+      innerInstructions: [
+        { programId: programId.toBase58(), accounts: [{ pubkey: programId.toBase58(), isWritable: true }], data: field('instruction_data') },
+      ],
+      remainingAccounts: [{ pubkey: programId, isWritable: true }],
+    })
+    expectKat('ix_session_execute_disc5', data, MachineWalletDisc.SessionExecute)
+  })
 })
 
 describe('builders pinned to the decoder lengths', () => {
@@ -295,16 +315,17 @@ describe('buildSessionExecuteIxData', () => {
     },
   ]
 
-  it('is [5] || generation || u32 count || inner, the same inner encoding Execute uses', () => {
+  it('is [5] || generation || bounds || u32 count || inner — ExecuteBounded\'s bounds section, Execute\'s inner encoding', () => {
     const remainingAccounts = encodeRemainingAccounts(inner)
-    const d = buildSessionExecuteIxData({ generation: 19n, innerInstructions: inner, remainingAccounts })
-    const exec = buildExecuteIxData({ maxSlot: 9n, vaultIndex: 0, innerInstructions: inner, remainingAccounts })
+    const bounds = swapBalanceBounds({ inputMint: WSOL_MINT, amountIn: 10n, outputMint: acc.toBase58(), minOut: 7n })
+    const d = buildSessionExecuteIxData({ generation: 19n, bounds, innerInstructions: inner, remainingAccounts })
+    const bounded = buildExecuteIxData({ maxSlot: 9n, vaultIndex: 0, bounds, innerInstructions: inner, remainingAccounts })
     expect(d[0]).toBe(MachineWalletDisc.SessionExecute)
-    expect(new DataView(d.buffer, d.byteOffset).getUint32(9, true)).toBe(1)
-    // Execute is [1] || max_slot(8) || vault_index(2) || <same tail>;
+    // ExecuteBounded is [25] || max_slot(8) || vault_index(2) || <same bounds + inner>;
     // SessionExecute carries only the generation (its vault is the session's).
     expect(new DataView(d.buffer, d.byteOffset).getBigUint64(1, true)).toBe(19n)
-    expect(d.slice(9)).toEqual(exec.slice(11))
+    expect(d.length).toBe(bounded.length - 2)
+    expect(d.slice(9)).toEqual(bounded.slice(11))
   })
 })
 

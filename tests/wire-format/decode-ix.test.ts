@@ -102,8 +102,8 @@ describe('decodeExecuteIxData: ExecuteBounded (disc 25)', () => {
   const disc25 = vector('ix_execute_bounded_disc25')
   // Offsets: disc 0, max_slot 1..9, vault 9..11, count 11, bound 0 at 12 (kind at 44), bound 1 at 53.
   it.each([
-    ['kind above 1', (d: Uint8Array) => { d[44] = 2 }, /kind 2/],
-    ['a mint named twice', (d: Uint8Array) => { d.set(d.slice(12, 44), 53) }, /twice/],
+    ['kind above 1', (d: Uint8Array) => { d[44] = 2 }, /kind must be 0 or 1, got 2/],
+    ['a mint named twice', (d: Uint8Array) => { d.set(d.slice(12, 44), 53) }, /already bounded/],
     ['more than 8 bounds', (d: Uint8Array) => { d[11] = 9 }, /above 8|data ends/],
   ])('rejects %s, as BalanceBounds::from_bytes does', (_name, mutate, re) => {
     const d = disc25.slice()
@@ -113,17 +113,23 @@ describe('decodeExecuteIxData: ExecuteBounded (disc 25)', () => {
 })
 
 describe('decodeSessionExecuteIxData', () => {
-  it('reads ix_session_execute_disc5 (generation 19)', () => {
+  it('reads ix_session_execute_disc5 (generation 19, two bounds)', () => {
     const d = decodeSessionExecuteIxData(vector('ix_session_execute_disc5'))
     expect(d.generation).toBe(19n)
+    expect(d.bounds.map((b) => [hex(b.mint), b.kind, b.amount])).toEqual([
+      ['c1'.repeat(32), 0, 1_000_000n],
+      ['00'.repeat(32), 1, 5_000_000n],
+    ])
     expect(d.innerInstructions[0].accounts).toEqual([{ index: 0, flags: 1 }])
     expect(hex(d.innerInstructions[0].data)).toBe('a1b2')
   })
 
   it('inverts buildSessionExecuteIxData', () => {
-    const data = buildSessionExecuteIxData({ generation: 3n, innerInstructions: inner, remainingAccounts: encodeRemainingAccounts(inner) })
+    const bounds = [{ mint: new Uint8Array(32).fill(7), kind: 0 as const, amount: 5n }]
+    const data = buildSessionExecuteIxData({ generation: 3n, bounds, innerInstructions: inner, remainingAccounts: encodeRemainingAccounts(inner) })
     const d = decodeSessionExecuteIxData(data)
     expect(d.generation).toBe(3n)
+    expect(d.bounds).toEqual(bounds)
     expect(d.innerInstructions).toHaveLength(1)
   })
 

@@ -38,10 +38,19 @@ export interface BalanceBound {
  * {@link MAX_BALANCE_BOUNDS}, a kind above 1, a mint named twice.
  */
 export function encodeBalanceBounds(bounds: ReadonlyArray<BalanceBound>): Uint8Array {
+  validateBalanceBounds(bounds);
+  return concatBytes([Uint8Array.of(bounds.length), ...bounds.flatMap((b) => [b.mint, Uint8Array.of(b.kind), u64LE(b.amount)])]);
+}
+
+/**
+ * `BalanceBounds::from_bytes`'s rules, in one place for the encoder and the
+ * decoder: at most {@link MAX_BALANCE_BOUNDS}, 32-byte mints, kind 0 or 1, no
+ * mint named twice. Throws `RangeError` naming the offending entry.
+ */
+export function validateBalanceBounds(bounds: ReadonlyArray<BalanceBound>): void {
   if (bounds.length > MAX_BALANCE_BOUNDS) {
     throw new RangeError(`bounds must hold at most ${MAX_BALANCE_BOUNDS} entries, got ${bounds.length}`);
   }
-  const parts: Uint8Array[] = [Uint8Array.of(bounds.length)];
   bounds.forEach((b, i) => {
     requireLength(b.mint, 32, `bounds[${i}].mint`);
     if (b.kind !== BalanceBoundKind.MaxOut && b.kind !== BalanceBoundKind.MinIn) {
@@ -50,9 +59,7 @@ export function encodeBalanceBounds(bounds: ReadonlyArray<BalanceBound>): Uint8A
     if (bounds.slice(0, i).some((prior) => bytesEqual(prior.mint, b.mint))) {
       throw new RangeError(`bounds[${i}] names a mint already bounded`);
     }
-    parts.push(b.mint, Uint8Array.of(b.kind), u64LE(b.amount));
   });
-  return concatBytes(parts);
 }
 
 /** A swap end's bound mint: SOL and wSOL are SOL (a copy — `NATIVE_SOL_MINT` is shared), anything else its own 32 bytes. */
