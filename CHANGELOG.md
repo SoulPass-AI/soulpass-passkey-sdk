@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 — 未发布（machine-wallet 60c9306：SessionExecute 带余额约束）
+## 0.9.0 — 2026-11-29（machine-wallet 60c9306：SessionExecute 带余额约束）
 
 `layout_kat.json` 原样重拷。破坏性变更，旧布局链上已拒（invalid instruction data）。
 
@@ -8,6 +8,7 @@
   约束段与 ExecuteBounded 逐字节一致、语义一致（`encodeBalanceBounds` / `swapBalanceBounds` 共用）。
   不点名的 mint 不得减少：空约束只能收不能付。
 - `decodeSessionExecuteIxData` 返回 `bounds`。
+- `validateBalanceBounds`：链上 `BalanceBounds::from_bytes` 的规则只写一处，编码和解码共用。
 
 ## 0.8.0 — 2026-11-28（machine-wallet 8f74a45：ExecuteBounded）
 
