@@ -162,6 +162,29 @@ describe('buildExecuteIxData against layout_kat.json', () => {
     })
     expectKat('ix_execute_disc1', data, MachineWalletDisc.Execute)
   })
+
+  it('ix_execute_bounded_disc25 (vault 3, ≤5000 of 0x33.. out, ≥7 lamports in)', () => {
+    const { u64, u16, u8, field } = vector('ix_execute_bounded_disc25')
+    expect(u8('bound_count')).toBe(2)
+    const account = new PublicKey(new Uint8Array(32).fill(0x77))
+    const data = buildExecuteIxData({
+      maxSlot: u64('max_slot_le'),
+      vaultIndex: u16('vault_index_le'),
+      bounds: [
+        { mint: field('bound_0_mint'), kind: 0, amount: u64('bound_0_amount_le') },
+        { mint: field('bound_1_mint (SOL)'), kind: 1, amount: u64('bound_1_amount_le') },
+      ],
+      innerInstructions: [
+        {
+          programId: new PublicKey(field('program_id')).toBase58(),
+          accounts: [{ pubkey: account.toBase58(), isWritable: true }],
+          data: field('data'),
+        },
+      ],
+      remainingAccounts: [{ pubkey: account, isWritable: true }],
+    })
+    expectKat('ix_execute_bounded_disc25', data, MachineWalletDisc.ExecuteBounded)
+  })
 })
 
 describe('builders pinned to the decoder lengths', () => {

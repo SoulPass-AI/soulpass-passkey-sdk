@@ -17,7 +17,7 @@
  *
  * | Field             | Counter                         | Operations |
  * |-------------------|---------------------------------|------------|
- * | `fundsNonce`      | funds `nonce` (N)               | Execute, ExecuteEphemeral, AdvanceNonce, OwnerCloseSession, CreateSession (+ `sessionNonce`) |
+ * | `fundsNonce`      | funds `nonce` (N)               | Execute, ExecuteEphemeral, ExecuteBounded, AdvanceNonce, OwnerCloseSession, CreateSession (+ `sessionNonce`) |
  * | `sessionNonce`    | `session_nonce` (S)             | BumpEpoch; CreateSession's first operand (then `priorGeneration`) |
  * | `sessionCreatedSlot` | target session's `created_slot` (its incarnation) | RevokeSession |
  * | `etaSlot`         | pending proposal's `recovery_eta` | CancelRecovery |
@@ -49,6 +49,7 @@ export const MACHINE_WALLET_TAGS = {
   createWallet: 'machine_wallet_create_wallet_v1',
   execute: 'machine_wallet_execute_v1',
   executeEphemeral: 'machine_wallet_execute_ephemeral_v1',
+  executeBounded: 'machine_wallet_execute_bounded_v1',
   advanceNonce: 'machine_wallet_advance_nonce_v1',
   createSession: 'machine_wallet_create_session_v1',
   revokeSession: 'machine_wallet_revoke_session_v1',

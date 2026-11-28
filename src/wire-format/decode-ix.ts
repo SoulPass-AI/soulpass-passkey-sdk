@@ -1,6 +1,7 @@
 /**
  * Decoders paired with the instruction-data builders: Execute (1) /
- * ExecuteWithEphemeralSigners (16), SessionExecute (5) and CreateSession (4).
+ * ExecuteWithEphemeralSigners (16) / ExecuteBounded (25), SessionExecute (5)
+ * and CreateSession (4).
  *
  * Each mirrors the program's decoder (`machine-wallet/program/src/instruction.rs`
  * `MachineWalletInstruction::unpack` + `parse_inner_instructions`) check for
@@ -14,7 +15,9 @@
  */
 
 import { MachineWalletDisc } from './disc';
-import { MAX_ALLOWED_PROGRAMS, MAX_CASH_MINTS, MAX_EPHEMERAL_SIGNERS, MAX_INNER_INSTRUCTIONS } from './constants';
+import { MAX_ALLOWED_PROGRAMS, MAX_BALANCE_BOUNDS, MAX_CASH_MINTS, MAX_EPHEMERAL_SIGNERS, MAX_INNER_INSTRUCTIONS } from './constants';
+import type { BalanceBound } from './balance-bounds';
+import { bytesEqual } from './_bytes';
 import { FLAG_EPHEMERAL_SIGNER, FLAG_WRITABLE } from './inner-hash';
 import type { CashMintPolicy, SessionParams } from './session';
 
@@ -32,14 +35,19 @@ export interface DecodedInnerInstruction {
   data: Uint8Array;
 }
 
-/** Execute (disc 1) or ExecuteWithEphemeralSigners (disc 16) instruction data. */
+/** Execute (disc 1), ExecuteWithEphemeralSigners (disc 16) or ExecuteBounded (disc 25) instruction data. */
 export interface DecodedExecute {
-  disc: typeof MachineWalletDisc.Execute | typeof MachineWalletDisc.ExecuteWithEphemeralSigners;
+  disc:
+    | typeof MachineWalletDisc.Execute
+    | typeof MachineWalletDisc.ExecuteWithEphemeralSigners
+    | typeof MachineWalletDisc.ExecuteBounded;
   maxSlot: bigint;
   /** The vault that signs the inner instructions. */
   vaultIndex: number;
   /** 1..=4 bumps, present exactly when `disc` is 16. */
   ephemeralSignerBumps?: Uint8Array;
+  /** 0..=8 outcome bounds, present exactly when `disc` is 25. */
+  bounds?: BalanceBound[];
   innerInstructions: DecodedInnerInstruction[];
 }
 
@@ -128,15 +136,22 @@ function readInnerInstructions(r: Reader, label: string): DecodedInnerInstructio
   return out;
 }
 
-/** Decode Execute (disc 1) or ExecuteWithEphemeralSigners (disc 16) instruction data. */
+/** Decode Execute (disc 1), ExecuteWithEphemeralSigners (disc 16) or ExecuteBounded (disc 25) instruction data. */
 export function decodeExecuteIxData(data: Uint8Array): DecodedExecute {
   const label = 'Execute';
   const r = new Reader(data, label);
-  const disc = readDisc(r, label, [MachineWalletDisc.Execute, MachineWalletDisc.ExecuteWithEphemeralSigners]) as DecodedExecute['disc'];
+  const disc = readDisc(r, label, [
+    MachineWalletDisc.Execute,
+    MachineWalletDisc.ExecuteWithEphemeralSigners,
+    MachineWalletDisc.ExecuteBounded,
+  ]) as DecodedExecute['disc'];
   const maxSlot = r.u64();
   const vaultIndex = r.u16();
   if (disc === MachineWalletDisc.Execute) {
     return { disc, maxSlot, vaultIndex, innerInstructions: readInnerInstructions(r, label) };
+  }
+  if (disc === MachineWalletDisc.ExecuteBounded) {
+    return { disc, maxSlot, vaultIndex, bounds: readBalanceBounds(r, label), innerInstructions: readInnerInstructions(r, label) };
   }
   const numEphemeral = r.u8();
   if (numEphemeral === 0 || numEphemeral > MAX_EPHEMERAL_SIGNERS) {
@@ -144,6 +159,21 @@ export function decodeExecuteIxData(data: Uint8Array): DecodedExecute {
   }
   const ephemeralSignerBumps = r.bytes(numEphemeral);
   return { disc, maxSlot, vaultIndex, ephemeralSignerBumps, innerInstructions: readInnerInstructions(r, label) };
+}
+
+/** `BalanceBounds::from_bytes`: count ≤ 8, kind ≤ 1, no mint named twice. */
+function readBalanceBounds(r: Reader, label: string): BalanceBound[] {
+  const count = r.u8();
+  if (count > MAX_BALANCE_BOUNDS) throw new Error(`${label}: bound count ${count} above ${MAX_BALANCE_BOUNDS}`);
+  const out: BalanceBound[] = [];
+  for (let i = 0; i < count; i++) {
+    const mint = r.bytes(32);
+    const kind = r.u8();
+    if (kind > 1) throw new Error(`${label}: bound ${i} kind ${kind} above 1`);
+    if (out.some((b) => bytesEqual(b.mint, mint))) throw new Error(`${label}: bound ${i} names a mint twice`);
+    out.push({ mint, kind: kind as BalanceBound['kind'], amount: r.u64() });
+  }
+  return out;
 }
 
 /** Decode SessionExecute (disc 5) instruction data. */

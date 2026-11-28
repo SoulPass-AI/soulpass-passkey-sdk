@@ -9,7 +9,13 @@
 
 import { MachineWalletDisc } from './disc';
 import { MAX_CLIENT_DATA_JSON_SIZE, MAX_INNER_INSTRUCTIONS } from './constants';
-import { computeExecuteEphemeralMessage, computeExecuteMessage, encodeEphemeralBumps } from './operation-hash';
+import {
+  computeExecuteBoundedMessage,
+  computeExecuteEphemeralMessage,
+  computeExecuteMessage,
+  encodeEphemeralBumps,
+} from './operation-hash';
+import { encodeBalanceBounds, type BalanceBound } from './balance-bounds';
 import type { InnerInstruction } from './inner-hash';
 import { accountFlags, computeInnerHash } from './inner-hash';
 import { u16LE, u32LE, u64LE, concatBytes } from './_bytes';
@@ -46,9 +52,10 @@ export function buildEvidenceIxData(clientDataJSON: Uint8Array): Uint8Array {
 }
 
 /**
- * Build the data blob for `Execute` (disc=1) or `ExecuteWithEphemeralSigners`
- * (disc=16). Picks the format from whether `ephemeralSignerBumps` is provided;
- * when provided it must hold 1..=`MAX_EPHEMERAL_SIGNERS` (4) bumps.
+ * Build the data blob for `Execute` (disc=1), `ExecuteWithEphemeralSigners`
+ * (disc=16) or `ExecuteBounded` (disc=25). Picks the format from which of
+ * `ephemeralSignerBumps` / `bounds` is provided (both throws); bumps must hold
+ * 1..=`MAX_EPHEMERAL_SIGNERS` (4), bounds at most `MAX_BALANCE_BOUNDS` (8).
  *
  * Layouts (mirrors `instruction.rs::Execute::deserialize` and `::ExecuteWithEphemeralSigners::deserialize`):
  *
@@ -59,6 +66,11 @@ export function buildEvidenceIxData(clientDataJSON: Uint8Array): Uint8Array {
  *   disc=16:
  *     [tag(1)=16] [max_slot u64 LE] [vault_index u16 LE]
  *     [num_ephemeral u8] [bumps(num_ephemeral bytes)]
+ *     [inner_count u32 LE] [encoded inner ixs...]
+ *
+ *   disc=25:
+ *     [tag(1)=25] [max_slot u64 LE] [vault_index u16 LE]
+ *     [bound_count u8] [bound_count × (mint 32 | kind u8 | amount u64 LE)]
  *     [inner_count u32 LE] [encoded inner ixs...]
  *
  * Inner instruction encoding (mirrors `InnerInstruction` Borsh layout):
@@ -95,20 +107,64 @@ export function buildExecuteIxData(args: {
    * authenticator signed matches what the chain recomputes.
    */
   ephemeralSignerBumps?: Uint8Array;
+  /**
+   * Outcome bounds. Present switches to disc=25; the same bounds must have fed
+   * `computeExecuteBoundedMessage`.
+   */
+  bounds?: ReadonlyArray<BalanceBound>;
 }): Uint8Array {
-  const { maxSlot, vaultIndex, innerInstructions, remainingAccounts, ephemeralSignerBumps } = args;
-  const ephemeral = ephemeralSignerBumps !== undefined;
+  return executeIxData(args, executeVariant(args));
+}
+
+/**
+ * Which Execute an operation is, as one value both projections read: the disc,
+ * its extra operands (between vault_index and the inner list) and the signed
+ * message — so the ix data and the challenge cannot pick different variants.
+ */
+interface ExecuteVariant {
+  disc: number;
+  operands: Uint8Array[];
+  hash: (op: FundsNonceBound & { vaultIndex: number }, innerHash: Uint8Array) => Uint8Array;
+}
+
+function executeVariant(op: { ephemeralSignerBumps?: Uint8Array; bounds?: ReadonlyArray<BalanceBound> }): ExecuteVariant {
+  const { ephemeralSignerBumps, bounds } = op;
+  if (ephemeralSignerBumps !== undefined && bounds !== undefined) {
+    throw new RangeError('an Execute carries ephemeral signer bumps or outcome bounds, not both');
+  }
+  if (ephemeralSignerBumps !== undefined) {
+    return {
+      disc: MachineWalletDisc.ExecuteWithEphemeralSigners,
+      operands: [encodeEphemeralBumps(ephemeralSignerBumps)],
+      hash: (o, innerHash) => computeExecuteEphemeralMessage({ ...o, ephemeralSignerBumps, innerHash }),
+    };
+  }
+  if (bounds !== undefined) {
+    return {
+      disc: MachineWalletDisc.ExecuteBounded,
+      operands: [encodeBalanceBounds(bounds)],
+      hash: (o, innerHash) => computeExecuteBoundedMessage({ ...o, bounds, innerHash }),
+    };
+  }
+  return { disc: MachineWalletDisc.Execute, operands: [], hash: (o, innerHash) => computeExecuteMessage({ ...o, innerHash }) };
+}
+
+function executeIxData(
+  args: { maxSlot: bigint; vaultIndex: number; innerInstructions: ReadonlyArray<InnerInstruction>; remainingAccounts: ReadonlyArray<RemainingAccount> },
+  variant: ExecuteVariant,
+): Uint8Array {
   return concatBytes([
-    Uint8Array.of(ephemeral ? MachineWalletDisc.ExecuteWithEphemeralSigners : MachineWalletDisc.Execute),
-    u64LE(maxSlot),
-    u16LE(vaultIndex, 'vaultIndex'),
-    ...(ephemeral ? [encodeEphemeralBumps(ephemeralSignerBumps)] : []),
-    encodeInnerInstructions(innerInstructions, remainingAccounts),
+    Uint8Array.of(variant.disc),
+    u64LE(args.maxSlot),
+    u16LE(args.vaultIndex, 'vaultIndex'),
+    ...variant.operands,
+    encodeInnerInstructions(args.innerInstructions, args.remainingAccounts),
   ]);
 }
 
 /**
- * One Execute (disc=1) or ExecuteWithEphemeralSigners (disc=16): the single
+ * One Execute (disc=1), ExecuteWithEphemeralSigners (disc=16) or
+ * ExecuteBounded (disc=25): the single
  * value the signed message, the ix data and the ix accounts are all projected
  * from by {@link encodeExecute}.
  */
@@ -122,6 +178,12 @@ export interface ExecuteOperation extends FundsNonceBound {
   innerInstructions: ReadonlyArray<InnerInstruction>;
   /** 1..=`MAX_EPHEMERAL_SIGNERS` (4) bumps selects disc=16; omit for disc=1 (empty throws). */
   ephemeralSignerBumps?: Uint8Array;
+  /**
+   * Outcome bounds select disc=25 (ExecuteBounded): the vault's least net
+   * balance change per mint, checked on chain after the CPIs. Exclusive with
+   * `ephemeralSignerBumps`. An empty list is valid: then no balance may fall.
+   */
+  bounds?: ReadonlyArray<BalanceBound>;
 }
 
 /**
@@ -153,13 +215,10 @@ export function encodeExecute(
 ): EncodedExecute {
   const innerHash = computeInnerHash(op.innerInstructions);
   const remainingAccounts = encodeRemainingAccounts(op.innerInstructions);
-  const { ephemeralSignerBumps } = op;
+  const variant = executeVariant(op);
   return {
-    operationHash:
-      ephemeralSignerBumps === undefined
-        ? computeExecuteMessage({ ...op, innerHash })
-        : computeExecuteEphemeralMessage({ ...op, ephemeralSignerBumps, innerHash }),
-    data: buildExecuteIxData({ ...op, remainingAccounts }),
+    operationHash: variant.hash(op, innerHash),
+    data: executeIxData({ ...op, remainingAccounts }, variant),
     wallet: op.walletPDA,
     vault: deriveVaultPda(op.walletPDA, op.vaultIndex, programId).address,
     remainingAccounts,
@@ -168,7 +227,7 @@ export function encodeExecute(
 
 /**
  * `inner_count(u32 LE) || encoded inner ixs` — the tail shared by Execute,
- * ExecuteWithEphemeralSigners and SessionExecute (`parse_inner_instructions`).
+ * ExecuteWithEphemeralSigners, ExecuteBounded and SessionExecute (`parse_inner_instructions`).
  * Internal to `wire-format/`.
  *
  * Throws `RangeError` outside 1..=`MAX_INNER_INSTRUCTIONS` (64): the decoder

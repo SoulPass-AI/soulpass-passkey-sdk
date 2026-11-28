@@ -26,6 +26,7 @@ export {
   MAX_CASH_MINTS,
   MAX_SLEEVE_MINTS,
   MAX_EPHEMERAL_SIGNERS,
+  MAX_BALANCE_BOUNDS,
   MAX_INNER_INSTRUCTIONS,
   MAX_CLIENT_DATA_JSON_SIZE,
   MAX_SIGNATURE_TTL_SLOTS,
@@ -106,7 +107,9 @@ export {
   computeInnerHash,
 } from './wire-format/inner-hash'
 export type { InnerInstruction } from './wire-format/inner-hash'
-export { EXECUTE_TAG, EXECUTE_EPHEMERAL_TAG } from './wire-format/operation-hash'
+export { EXECUTE_TAG, EXECUTE_EPHEMERAL_TAG, EXECUTE_BOUNDED_TAG } from './wire-format/operation-hash'
+export { BalanceBoundKind, swapBalanceBounds } from './wire-format/balance-bounds'
+export type { BalanceBound } from './wire-format/balance-bounds'
 export {
   SIGNED_MESSAGE_ENVELOPE,
   deploymentDomain,

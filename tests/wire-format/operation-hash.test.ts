@@ -5,13 +5,15 @@
 // that every operand actually reaches the preimage, and that the guard rails
 // (length checks, u8 prefix ceiling) hold.
 import { describe, it, expect } from 'vitest'
-import { Keypair } from '@solana/web3.js'
+import { Keypair, PublicKey } from '@solana/web3.js'
 import {
   computeExecuteMessage,
   computeExecuteEphemeralMessage,
   EXECUTE_TAG,
   EXECUTE_EPHEMERAL_TAG,
 } from '../../src/wire-format/operation-hash'
+import { encodeBalanceBounds, swapBalanceBounds } from '../../src/wire-format/balance-bounds'
+import { encodeExecute } from '../../src/wire-format/execute-ix'
 
 const walletPDA = Keypair.generate().publicKey
 
@@ -167,5 +169,60 @@ describe('computeExecuteEphemeralMessage', () => {
       'machine_wallet_execute_ephemeral_v1',
     )
     expect(EXECUTE_EPHEMERAL_TAG).not.toEqual(EXECUTE_TAG)
+  })
+})
+
+describe('encodeBalanceBounds', () => {
+  const mint = (b: number) => new Uint8Array(32).fill(b)
+  it('refuses what BalanceBounds::from_bytes refuses', () => {
+    expect(() => encodeBalanceBounds([{ mint: mint(1), kind: 2 as 0, amount: 1n }])).toThrow(RangeError)
+    expect(() => encodeBalanceBounds([{ mint: mint(1), kind: 0, amount: 1n }, { mint: mint(1), kind: 1, amount: 1n }])).toThrow(/already bounded/)
+    expect(() => encodeBalanceBounds(Array.from({ length: 9 }, (_, i) => ({ mint: mint(i), kind: 0 as const, amount: 1n })))).toThrow(/at most 8/)
+    expect(() => encodeBalanceBounds([{ mint: new Uint8Array(31), kind: 0, amount: 1n }])).toThrow(/32 bytes/)
+  })
+  it('an empty list is a valid count-0 section (nothing may fall)', () => {
+    expect(encodeBalanceBounds([])).toEqual(Uint8Array.of(0))
+  })
+})
+
+describe('swapBalanceBounds', () => {
+  const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  const WSOL = 'So11111111111111111111111111111111111111112'
+  it('caps the input (kind 0) and floors the output (kind 1), wSOL as the all-zero mint', () => {
+    const [cap, floor] = swapBalanceBounds({ inputMint: WSOL, amountIn: 10n, outputMint: USDC, minOut: 7n })
+    expect(cap).toEqual({ mint: new Uint8Array(32), kind: 0, amount: 10n })
+    expect(floor.kind).toBe(1)
+    expect(floor.amount).toBe(7n)
+    expect(floor.mint).toEqual(new PublicKey(USDC).toBytes())
+    const [, out] = swapBalanceBounds({ inputMint: USDC, amountIn: 10n, outputMint: WSOL, minOut: 7n })
+    expect(out.mint).toEqual(new Uint8Array(32))
+  })
+  it('refuses a non-positive amount or a one-mint pair', () => {
+    expect(() => swapBalanceBounds({ inputMint: USDC, amountIn: 0n, outputMint: WSOL, minOut: 1n })).toThrow(RangeError)
+    expect(() => swapBalanceBounds({ inputMint: USDC, amountIn: 1n, outputMint: WSOL, minOut: 0n })).toThrow(RangeError)
+    expect(() => swapBalanceBounds({ inputMint: WSOL, amountIn: 1n, outputMint: WSOL, minOut: 1n })).toThrow(/one mint/)
+  })
+})
+
+describe('encodeExecute with bounds', () => {
+  const op = {
+    walletPDA,
+    creationSlot: 1n,
+    fundsNonce: 2n,
+    maxSlot: 3n,
+    deployment: 'devnet' as const,
+    vaultIndex: 0,
+    innerInstructions: [{ programId: walletPDA.toBase58(), accounts: [], data: Uint8Array.of(1) }],
+  }
+  const bounds = [{ mint: new Uint8Array(32), kind: 0 as const, amount: 5n }]
+  it('selects disc 25 and a hash distinct from plain Execute', () => {
+    const bounded = encodeExecute({ ...op, bounds })
+    const plain = encodeExecute(op)
+    expect(bounded.data[0]).toBe(25)
+    expect(bounded.operationHash).not.toEqual(plain.operationHash)
+    expect(encodeExecute({ ...op, bounds: [{ ...bounds[0], amount: 6n }] }).operationHash).not.toEqual(bounded.operationHash)
+  })
+  it('refuses bumps and bounds together', () => {
+    expect(() => encodeExecute({ ...op, bounds, ephemeralSignerBumps: Uint8Array.of(255) })).toThrow(/not both/)
   })
 })

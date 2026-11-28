@@ -3,7 +3,7 @@
  *
  * `tests/fixtures/signed_message_kat.json` is a byte-for-byte copy of
  * machine-wallet's `program/tests/vectors/signed_message_kat.json`, produced by
- * the on-chain implementation itself (57 vectors = 19 operations × 3 deployment
+ * the on-chain implementation itself (60 vectors = 20 operations × 3 deployment
  * domains).
  *
  * Why this matters more than a self-consistency test: a signature the chain
@@ -36,9 +36,12 @@ import {
 import {
   computeExecuteMessage,
   computeExecuteEphemeralMessage,
+  computeExecuteBoundedMessage,
   EXECUTE_TAG,
   EXECUTE_EPHEMERAL_TAG,
+  EXECUTE_BOUNDED_TAG,
 } from '../../src/wire-format/operation-hash'
+import type { BalanceBound } from '../../src/wire-format/balance-bounds'
 import {
   MACHINE_WALLET_TAGS,
   type WalletMessageScope,
@@ -164,6 +167,22 @@ const RECOMPUTE: Record<string, Recompute> = {
       ...base,
       vaultIndex: u16(vaultIndex!),
       ephemeralSignerBumps: bumps!,
+      innerHash: innerHash!,
+    })
+  },
+  execute_bounded: (parts, d) => {
+    const { scope, counter, rest } = prefix(parts, d)
+    const [vaultIndex, count, bounds, innerHash] = take(rest, 4)
+    expect(bounds!.length).toBe(u8(count!) * 41)
+    const parsed: BalanceBound[] = Array.from({ length: u8(count!) }, (_, i) => {
+      const e = bounds!.slice(i * 41, i * 41 + 41)
+      return { mint: e.slice(0, 32), kind: e[32] as BalanceBound['kind'], amount: u64(e.slice(33)) }
+    })
+    return computeExecuteBoundedMessage({
+      ...scope,
+      fundsNonce: counter,
+      vaultIndex: u16(vaultIndex!),
+      bounds: parsed,
       innerHash: innerHash!,
     })
   },
@@ -298,9 +317,9 @@ const recomputeFor = (vectorName: string): Recompute => {
 }
 
 describe('signed-message KATs', () => {
-  it('carries 57 vectors (19 operations × 3 deployment domains)', () => {
+  it('carries 60 vectors (20 operations × 3 deployment domains)', () => {
     // A shrunken fixture must not quietly pass as "all vectors matched".
-    expect(fixture.vectors).toHaveLength(57)
+    expect(fixture.vectors).toHaveLength(60)
   })
 
   it('reproduces every vector byte-for-byte through the hash primitive', () => {
@@ -341,6 +360,7 @@ describe('signed-message KATs', () => {
 const COUNTER_FIELD: Record<string, string> = {
   execute: 'fundsNonce',
   execute_ephemeral: 'fundsNonce',
+  execute_bounded: 'fundsNonce',
   advance_nonce: 'fundsNonce',
   create_session: 'fundsNonce',
   revoke_session: 'sessionCreatedSlot',
@@ -372,7 +392,7 @@ describe('every compute*Message entry point against the contract vectors', () =>
   const localVectors = fixture.vectors.filter((v) => v.name.endsWith('_local'))
 
   it('has one local vector per operation, each with an entry point', () => {
-    expect(localVectors).toHaveLength(19)
+    expect(localVectors).toHaveLength(20)
     expect(new Set(localVectors.map((v) => v.name.slice(0, -'_local'.length)))).toEqual(
       new Set(Object.keys(RECOMPUTE)),
     )
@@ -389,11 +409,12 @@ describe('every compute*Message entry point against the contract vectors', () =>
 })
 
 describe('tag constants', () => {
-  it('Execute and ExecuteEphemeral are different operations, both _v1', () => {
+  it('Execute, ExecuteEphemeral and ExecuteBounded are different operations, all _v1', () => {
     expect(new TextDecoder().decode(EXECUTE_TAG)).toBe('machine_wallet_execute_v1')
     expect(new TextDecoder().decode(EXECUTE_EPHEMERAL_TAG)).toBe(
       'machine_wallet_execute_ephemeral_v1',
     )
+    expect(new TextDecoder().decode(EXECUTE_BOUNDED_TAG)).toBe('machine_wallet_execute_bounded_v1')
   })
 })
 

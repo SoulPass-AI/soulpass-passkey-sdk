@@ -40,7 +40,7 @@ describe('MachineWalletError', () => {
       const gap = unassigned.includes(c)
       expect([live, retired, gap].filter(Boolean)).toHaveLength(1)
     }
-    expect(Math.max(...codes)).toBe(77)
+    expect(Math.max(...codes)).toBe(78)
   })
 
   it('describes codes', () => {
@@ -51,7 +51,8 @@ describe('MachineWalletError', () => {
     expect(describeMachineWalletError(38)).toBe('unknown(38)')
     expect(describeMachineWalletError(76)).toBe('SessionGenerationMismatch')
     expect(describeMachineWalletError(77)).toBe('RecoveryAlreadyPending')
-    expect(describeMachineWalletError(78)).toBe('unknown(78)')
+    expect(describeMachineWalletError(78)).toBe('BalanceBoundViolated')
+    expect(describeMachineWalletError(79)).toBe('unknown(79)')
     expect(describeMachineWalletError(-1)).toBe('unknown(-1)')
   })
 })

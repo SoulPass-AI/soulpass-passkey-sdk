@@ -28,6 +28,7 @@ describe('MachineWalletDisc', () => {
       ExecuteRecovery: 22,
       BumpEpoch: 23,
       SetRecoveryThreshold: 24,
+      ExecuteBounded: 25,
     })
   })
 

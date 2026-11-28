@@ -55,6 +55,11 @@ export const MachineWalletDisc = {
   BumpEpoch: 23,
   /** SetRecoveryThreshold — 0 follows the spending threshold. */
   SetRecoveryThreshold: 24,
+  /**
+   * ExecuteBounded — Execute whose signature also bounds the outcome: the
+   * vault's least net balance change per mint, checked after the CPIs.
+   */
+  ExecuteBounded: 25,
 } as const;
 
 export type MachineWalletDiscValue =

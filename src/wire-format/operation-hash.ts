@@ -1,7 +1,8 @@
 /**
  * Execute `operation_hash` — the value WebAuthn signs as challenge. Mirrors
  * `machine-wallet/program/src/processor/execute.rs::compute_message_hash`
- * (disc=1) and `compute_ephemeral_message_hash` (disc=16).
+ * (disc=1), `compute_ephemeral_message_hash` (disc=16) and the bounded
+ * message (disc=25).
  *
  * Named by operation, not by discriminator or version: the version lives in
  * the tag alone (`machine_wallet_execute_v1` /
@@ -15,6 +16,7 @@
 
 import { concatBytes, requireLength, u16LE } from './_bytes';
 import { MAX_EPHEMERAL_SIGNERS } from './constants';
+import { encodeBalanceBounds, type BalanceBound } from './balance-bounds';
 import { hashWalletOp, MACHINE_WALLET_TAGS, type FundsNonceBound } from './authority-messages';
 
 /** Instruction tag for the disc=1 Execute message hash. */
@@ -28,6 +30,9 @@ export const EXECUTE_TAG = new TextEncoder().encode(MACHINE_WALLET_TAGS.execute)
 export const EXECUTE_EPHEMERAL_TAG = new TextEncoder().encode(
   MACHINE_WALLET_TAGS.executeEphemeral,
 );
+
+/** Instruction tag for the disc=25 ExecuteBounded message hash. */
+export const EXECUTE_BOUNDED_TAG = new TextEncoder().encode(MACHINE_WALLET_TAGS.executeBounded);
 
 /**
  * Compute the disc=1 Execute challenge.
@@ -90,4 +95,26 @@ export function encodeEphemeralBumps(bumps: Uint8Array): Uint8Array {
     throw new RangeError(`ephemeralSignerBumps must hold 1..=${MAX_EPHEMERAL_SIGNERS} bumps, got ${n}`);
   }
   return concatBytes([Uint8Array.of(n), bumps]);
+}
+
+/**
+ * Compute the disc=25 ExecuteBounded challenge.
+ *
+ * Payload: `wallet(32) || creation_slot_u64_le || funds_nonce_u64_le ||
+ * max_slot_u64_le || vault_index_u16_le || bound_count(1) ||
+ * bounds(bound_count × 41) || inner_hash(32)` — the ephemeral shape with the
+ * bumps replaced by the bounds, encoded by the same {@link encodeBalanceBounds}
+ * as `buildExecuteIxData`.
+ */
+export function computeExecuteBoundedMessage(
+  args: FundsNonceBound & { vaultIndex: number; bounds: ReadonlyArray<BalanceBound>; innerHash: Uint8Array },
+): Uint8Array {
+  return hashWalletOp(
+    EXECUTE_BOUNDED_TAG,
+    args,
+    args.fundsNonce,
+    u16LE(args.vaultIndex, 'vaultIndex'),
+    encodeBalanceBounds(args.bounds),
+    requireLength(args.innerHash, 32, 'innerHash'),
+  );
 }

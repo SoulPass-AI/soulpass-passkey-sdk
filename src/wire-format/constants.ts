@@ -29,6 +29,8 @@ export const MAX_CASH_MINTS = 5;
 export const MAX_SLEEVE_MINTS = 16;
 /** `state::MAX_EPHEMERAL_SIGNERS`. */
 export const MAX_EPHEMERAL_SIGNERS = 4;
+/** `instruction::MAX_BALANCE_BOUNDS`: bounds one ExecuteBounded carries. */
+export const MAX_BALANCE_BOUNDS = 8;
 /** `instruction::MAX_INNER_INSTRUCTIONS`. */
 export const MAX_INNER_INSTRUCTIONS = 64;
 /** `webauthn::MAX_CLIENT_DATA_JSON_SIZE` (bytes). */
@@ -53,6 +55,9 @@ export const SESSION_FLAGS_KNOWN = 0x01;
  * reads this array, so a mutation cannot change what they accept.
  */
 export const NATIVE_SOL_MINT: Uint8Array = new Uint8Array(32);
+
+/** The wrapped-SOL mint (base58). A balance bound never names it: the program counts wSOL as SOL. */
+export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
 /** True when `mint` is the 32-byte all-zero {@link NATIVE_SOL_MINT}. */
 export function isNativeSolMint(mint: Uint8Array): boolean {

@@ -88,6 +88,30 @@ describe('decodeExecuteIxData', () => {
   })
 })
 
+describe('decodeExecuteIxData: ExecuteBounded (disc 25)', () => {
+  it('reads ix_execute_bounded_disc25', () => {
+    const d = decodeExecuteIxData(vector('ix_execute_bounded_disc25'))
+    expect(d).toMatchObject({ disc: 25, vaultIndex: 3 })
+    expect(d.bounds).toEqual([
+      { mint: new Uint8Array(32).fill(0x33), kind: 0, amount: 5000n },
+      { mint: new Uint8Array(32), kind: 1, amount: 7n },
+    ])
+    expect(hex(d.innerInstructions[0].data)).toBe('abcd')
+  })
+
+  const disc25 = vector('ix_execute_bounded_disc25')
+  // Offsets: disc 0, max_slot 1..9, vault 9..11, count 11, bound 0 at 12 (kind at 44), bound 1 at 53.
+  it.each([
+    ['kind above 1', (d: Uint8Array) => { d[44] = 2 }, /kind 2/],
+    ['a mint named twice', (d: Uint8Array) => { d.set(d.slice(12, 44), 53) }, /twice/],
+    ['more than 8 bounds', (d: Uint8Array) => { d[11] = 9 }, /above 8|data ends/],
+  ])('rejects %s, as BalanceBounds::from_bytes does', (_name, mutate, re) => {
+    const d = disc25.slice()
+    mutate(d)
+    expect(() => decodeExecuteIxData(d)).toThrow(re)
+  })
+})
+
 describe('decodeSessionExecuteIxData', () => {
   it('reads ix_session_execute_disc5 (generation 19)', () => {
     const d = decodeSessionExecuteIxData(vector('ix_session_execute_disc5'))

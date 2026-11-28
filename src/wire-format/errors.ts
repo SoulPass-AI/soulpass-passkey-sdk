@@ -70,20 +70,21 @@ export const MachineWalletError = {
   InvalidCashCap: 67,
   SessionCreatorDidNotSign: 68,
   /**
-   * A session handed out authority over a vault token account, or funded one
-   * that already has a foreign delegate or close authority.
+   * A metered call (SessionExecute, ExecuteBounded) handed out authority over a
+   * vault token account, or funded one that already has a foreign delegate or
+   * close authority.
    */
-  SessionAuthorityChangeDenied: 69,
+  VaultAuthorityChangeDenied: 69,
   SessionEpochStale: 70,
   NoPendingRecovery: 71,
   RecoveryDelayNotElapsed: 72,
   InvalidRecoveryTarget: 73,
   /**
-   * A session touched an account through which the vault holds unmetered
-   * authority (a mint, token multisig or durable nonce naming the vault), or
-   * sent an ATA `RecoverNested`.
+   * A metered call (SessionExecute, ExecuteBounded) touched an account through
+   * which the vault holds unmetered authority (a mint, token multisig or
+   * durable nonce naming the vault), or sent an ATA `RecoverNested`.
    */
-  SessionVaultAuthorityDenied: 74,
+  VaultAuthorityDenied: 74,
   SessionSolBudgetMissing: 75,
   /**
    * A session-key transaction names a different creation of this session PDA.
@@ -95,6 +96,13 @@ export const MachineWalletError = {
    * never retry — only the root's CancelRecovery (or ExecuteRecovery) clears it.
    */
   RecoveryAlreadyPending: 77,
+  /**
+   * ExecuteBounded left a mint's vault balance below its signed bound, or
+   * lowered one that carries no bound. The whole transaction rolled back, the
+   * nonce included. A swap that filled below its minimum: never loosen the
+   * bound and retry on the user's behalf.
+   */
+  BalanceBoundViolated: 78,
 } as const;
 
 export type MachineWalletErrorName = keyof typeof MachineWalletError;

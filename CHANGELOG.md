@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0 — 2026-11-28（machine-wallet 8f74a45：ExecuteBounded）
+
+与 machine-wallet ExecuteBounded（disc 25）逐字节对齐；`signed_message_kat.json` 与 `layout_kat.json` 原样重拷（60 条签名向量）。
+
+- **ExecuteBounded**：`ExecuteOperation.bounds` 选 disc 25，owner 签的是结果（每个 mint 金库净余额的最小变化），
+  不是路由。`encodeExecute` 同源产出 `operationHash`（tag `machine_wallet_execute_bounded_v1`，bounds 位于
+  vault_index 与 inner_hash 之间）与 ix 数据；与 `ephemeralSignerBumps` 互斥。
+  `encodeBalanceBounds`（`wire-format/balance-bounds.ts`）按链上 `BalanceBounds::from_bytes` 拒绝：多于 8 条、kind > 1、同一 mint 两次。
+- **`swapBalanceBounds({ inputMint, amountIn, outputMint, minOut })`**：一笔 swap 的两条约束只在这里定义——
+  输入 kind 0（最多流出 amountIn），输出 kind 1（至少流入 minOut）；SOL / wSOL 一律写全零 mint。
+- `decodeExecuteIxData` 认 disc 25，返回 `bounds`；新增 `MachineWalletDisc.ExecuteBounded`、`MAX_BALANCE_BOUNDS`、
+  `BalanceBoundKind`、`EXECUTE_BOUNDED_TAG`。
+- **错误码**：新增 78 `BalanceBoundViolated`（整笔回滚、nonce 未消耗；展示为成交少于最低值，不要放宽约束重试）。
+  69 / 74 改名为 `VaultAuthorityChangeDenied` / `VaultAuthorityDenied`（数值不变，破坏性：按名字引用的要改）。
+
 ## 0.7.0 — 2026-11-23（machine-wallet 多 vault）
 
 与 machine-wallet 多 vault 协议逐字节对齐（三个 KAT 原样重拷）。破坏性变更，不保留旧形态。

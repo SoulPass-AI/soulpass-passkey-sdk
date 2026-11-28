@@ -175,6 +175,30 @@
       "bytes_hex": "0115cd5b07000000000300010000005151515151515151515151515151515151515151515151515151515151515151010002000001abcd"
     },
     {
+      "name": "ix_execute_bounded_disc25",
+      "description": "ExecuteBounded instruction data: disc 25 | max_slot_le | vault_index_le | bound_count_u8 (<= 8) | bounds (mint 32 | kind u8 | amount_le u64) | inner_count_u32 | inner instructions as in Execute. A bound is the least net change the call may leave in the vault's balance of that mint over all its token accounts: kind 0 = may fall by at most amount, kind 1 = must rise by at least amount. The all-zero mint is SOL (vault lamports plus its token accounts' lamports; wrapped SOL counts as SOL). A mint with no bound may not fall; a mint named twice or a kind above 1 is rejected. Signed over machine_wallet_execute_bounded_v1 with bound_count | bounds between vault_index and inner_hash. Fails with 78 (BalanceBoundViolated), or 69 / 74 when the call hands out or touches vault authority. Accounts as in Execute. Example: vault 3, at most 5000 of mint 0x33.. out, at least 7 lamports in.",
+      "fields": [
+        {"name": "discriminator", "hex": "19"},
+        {"name": "max_slot_le", "hex": "15cd5b0700000000"},
+        {"name": "vault_index_le", "hex": "0300"},
+        {"name": "bound_count", "hex": "02"},
+        {"name": "bound_0_mint", "hex": "3333333333333333333333333333333333333333333333333333333333333333"},
+        {"name": "bound_0_kind (max out)", "hex": "00"},
+        {"name": "bound_0_amount_le", "hex": "8813000000000000"},
+        {"name": "bound_1_mint (SOL)", "hex": "0000000000000000000000000000000000000000000000000000000000000000"},
+        {"name": "bound_1_kind (min in)", "hex": "01"},
+        {"name": "bound_1_amount_le", "hex": "0700000000000000"},
+        {"name": "inner_count_le", "hex": "01000000"},
+        {"name": "program_id", "hex": "5151515151515151515151515151515151515151515151515151515151515151"},
+        {"name": "accounts_len_le", "hex": "0100"},
+        {"name": "data_len_le", "hex": "0200"},
+        {"name": "account_0 (index, flags=writable)", "hex": "0001"},
+        {"name": "data", "hex": "abcd"}
+      ],
+      "length": 138,
+      "bytes_hex": "1915cd5b070000000003000233333333333333333333333333333333333333333333333333333333333333330088130000000000000000000000000000000000000000000000000000000000000000000000000000010700000000000000010000005151515151515151515151515151515151515151515151515151515151515151010002000001abcd"
+    },
+    {
       "name": "ix_session_execute_disc5",
       "description": "SessionExecute: disc 5 | generation_le | inner_count_u32 | inner instructions. The outer session-key signature binds generation 19 before any CPI. Example one instruction, one writable account, two data bytes.",
       "fields": [
